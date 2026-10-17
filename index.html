@@ -35,6 +35,8 @@
     --card-line: rgba(255, 255, 255, 0.14);
     --mint: #A8E6CF;
     --pill-ink: #2B2F5C;
+    --coin: #F9E79F;
+    --coral: #FF9AA2;
     --font-display: "Fredoka", "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
     --font-body: "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
     color-scheme: dark;
@@ -97,13 +99,78 @@
   #stage { flex: 1; min-height: 0; position: relative; }
   #board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
 
-  .hint {
-    text-align: center;
-    font-size: 0.85rem;
-    color: var(--ink-dim);
-    padding-top: 8px;
-    text-wrap: balance;
+  /* Coins and power-ups under the tray */
+  .powerbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 10px;
   }
+  .coins {
+    display: flex; align-items: center; gap: 7px;
+    font-family: var(--font-display); font-weight: 600; font-size: 1.3rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .coin-icon { width: 20px; height: 20px; flex: none; }
+  .powers { display: flex; gap: 8px; }
+  .power {
+    display: flex; align-items: center; gap: 6px;
+    height: 42px; padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid var(--card-line);
+    background: var(--card);
+    color: var(--ink);
+    font: 700 1rem var(--font-body);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+  .power svg { width: 20px; height: 20px; flex: none; }
+  .power:disabled { opacity: 0.38; cursor: default; }
+  .power.active { background: var(--coral); color: var(--pill-ink); border-color: transparent; }
+  .power:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+
+  .howto { margin: 4px 0 6px; padding: 0; list-style: none; display: grid; gap: 6px; color: var(--ink-dim); font-weight: 700; font-size: 0.95rem; }
+
+  /* Shop */
+  .sheet.shop { width: min(440px, 100%); padding: 26px 20px 22px; gap: 14px; max-height: 100%; overflow-y: auto; background: rgba(45, 49, 102, 0.96); }
+  .shop .eyebrow { font-size: 0.75rem; font-weight: 800; letter-spacing: 0.14em; color: var(--ink-dim); }
+  .shop .wallet { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 600; font-size: 1.5rem; }
+  .shop .wallet .coin-icon { width: 24px; height: 24px; }
+  .shop .bonus { color: var(--coin); font-weight: 700; font-size: 0.95rem; margin-top: -6px; }
+  .items { display: grid; gap: 10px; width: 100%; }
+  .item {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 18px;
+    background: var(--card);
+    border: 1px solid var(--card-line);
+    text-align: left;
+  }
+  .item .ico { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.1); }
+  .item .ico svg { width: 24px; height: 24px; }
+  .item .text { min-width: 0; }
+  .item .name { font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; }
+  .item .owned { color: var(--ink-dim); font-weight: 700; font-size: 0.85rem; margin-left: 6px; }
+  .item .desc { color: var(--ink-dim); font-size: 0.88rem; line-height: 1.3; }
+  .buy {
+    display: flex; align-items: center; gap: 5px;
+    padding: 9px 14px;
+    border-radius: 999px;
+    border: 0;
+    background: var(--coin);
+    color: var(--pill-ink);
+    font: 800 1rem var(--font-body);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .buy svg { width: 16px; height: 16px; }
+  .buy:disabled { background: rgba(255, 255, 255, 0.12); color: var(--ink-dim); cursor: default; }
+  .buy:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
 
   .overlay {
     position: fixed; inset: 0;
@@ -156,11 +223,33 @@
 </header>
 
 <div id="stage" class="column"><canvas id="board" aria-label="Game board"></canvas></div>
-<p class="hint column">Tap to rotate · Slide to steer or drop · Drag shapes to place</p>
+<div class="powerbar column">
+  <div class="coins" aria-label="Coins">
+    <svg class="coin-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#F9E79F"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="#E2C25F" stroke-width="2"/></svg>
+    <span id="coins">0</span>
+  </div>
+  <div class="powers">
+    <button class="power" id="bombBtn" aria-label="Use bomb">
+      <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="10" cy="14.5" r="7"/><path d="M14.5 9.5l3-3" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="19" cy="5" r="2" fill="#F9E79F"/></svg>
+      <span id="bombCount">0</span>
+    </button>
+    <button class="power" id="rerollBtn" aria-label="Reroll tray shapes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12A8 8 0 0 1 18.3 7.1"/><path d="M18.5 3v4.3h-4.3M5.5 21v-4.3h4.3"/></svg>
+      <span id="rerollCount">0</span>
+    </button>
+  </div>
+</div>
 
 <div class="overlay" id="pauseOverlay" hidden>
   <div class="sheet">
     <h2>Paused</h2>
+    <ul class="howto">
+      <li>Tap the board to rotate the falling piece</li>
+      <li>Slide left, right or down to steer it</li>
+      <li>Tap a shape to rotate it, drag to place it</li>
+      <li>Fill a row or a 3×3 square to clear it</li>
+      <li>Earn coins from clears. The shop opens each level.</li>
+    </ul>
     <button class="pill" id="resumeBtn">Resume</button>
     <button class="text-btn" id="restartBtn">New game</button>
   </div>
@@ -171,6 +260,19 @@
     <div class="big" id="finalScore">0</div>
     <div class="sub" id="finalBest">Best 0</div>
     <button class="pill" id="againBtn">Play again</button>
+  </div>
+</div>
+<div class="overlay" id="shopOverlay" hidden>
+  <div class="sheet shop" role="dialog" aria-labelledby="shopTitle">
+    <div class="eyebrow">SHOP</div>
+    <h2 id="shopTitle">Level 2</h2>
+    <div class="wallet">
+      <svg class="coin-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#F9E79F"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="#E2C25F" stroke-width="2"/></svg>
+      <span id="shopCoins">0</span>
+    </div>
+    <div class="bonus" id="shopBonus">+5 level bonus</div>
+    <div class="items" id="shopItems"></div>
+    <button class="pill" id="shopContinue">Continue</button>
   </div>
 </div>
 
@@ -243,7 +345,9 @@
   let S, drag = null, gameId = 0, pieceSeq = 0, best = loadBest();
   const emptyGrid = () => Array.from({ length: ROWS }, () => Array(COLS).fill(null));
   const level = () => Math.floor(S.clears / 10) + 1;
-  const interval = () => Math.max(300, 1300 - (level() - 1) * 120);
+  const interval = () => Math.max(300, 1300 - (level() - 1) * 120) * (S.slowTime ? 1.6 : 1);
+  // True while the board should hold still: paused, game over, shopping, or aiming a bomb.
+  const frozen = () => S.over || S.paused || S.shopOpen || S.aiming;
 
   function findClears(g) {
     const rows = [], squares = [];
@@ -263,8 +367,9 @@
   }
 
   function freshTray(now) {
-    S.tray = [0, 1, 2].map(() => randomShape(TRAY_F));
-    S.trayPop = [now, now + 60, now + 120];
+    const n = 3 + (S.extraSlot ? 1 : 0);
+    S.tray = Array.from({ length: n }, () => randomShape(TRAY_F));
+    S.trayPop = S.tray.map((_, i) => now + i * 60);
   }
 
   function newGame(restore) {
@@ -274,18 +379,27 @@
       grid: emptyGrid(), falling: null, tray: [], trayPop: [0, 0, 0],
       score: 0, clears: 0, streak: 0, over: false, paused: false,
       clearing: new Set(), resolving: false, popup: null, fades: [], lastStep: now,
+      // Shop and power-ups
+      coins: 0, bombs: 0, rerolls: 0, extraSlot: false, slowTime: false,
+      levelSeen: 1, levelBonus: 0, shopPending: false, shopOpen: false,
+      aiming: false, aimCell: null, blast: null,
     };
     drag = null;
+    touch = null;
     if (restore && restore.grid) {
       S.grid = restore.grid.map((row, r) => row.map(v =>
         v === null || v === undefined ? null : newBlock(typeof v === "number" ? v : v.c, r)));
       S.tray = restore.tray.map(t => t && makeShape(t.cells, t.color));
+      S.trayPop = S.tray.map(() => 0);
       S.score = restore.score || 0; S.clears = restore.clears || 0; S.streak = restore.streak || 0;
+      S.coins = restore.coins || 0; S.bombs = restore.bombs || 0; S.rerolls = restore.rerolls || 0;
+      S.extraSlot = !!restore.extraSlot; S.slowTime = !!restore.slowTime;
+      S.levelSeen = level();
     } else {
       freshTray(now);
       seedRubble(3);
     }
-    hide(pauseOverlay); hide(overOverlay);
+    hide(pauseOverlay); hide(overOverlay); hide(shopOverlay);
     updateHud();
   }
 
@@ -376,6 +490,8 @@
     shape.cells.forEach(([r, c]) => { S.grid[r + r0][c + c0] = newBlock(shape.color, r + r0); });
     S.tray[i] = null;
     S.score += shape.cells.length;
+    // An expired extra slot goes away once its shape is used.
+    if (!S.extraSlot && S.tray.length > 3 && !S.tray[3]) S.tray.length = 3;
     if (S.tray.every(t => !t)) freshTray(performance.now());
     resolve(true);
     updateBest();
@@ -396,6 +512,15 @@
     const points = (f.count * 18 + (f.count - 1) * 18) * mult;
     S.score += points;
     S.clears += f.count;
+    S.coins += 2 * f.count * chain;
+    // Reaching a new level opens the shop once the board settles.
+    if (level() > S.levelSeen) {
+      const gained = level() - S.levelSeen;
+      S.levelSeen = level();
+      S.levelBonus += 5 * gained;
+      S.coins += 5 * gained;
+      S.shopPending = true;
+    }
 
     const parts = [];
     if (f.rows.length) parts.push(f.rows.length === 1 ? "Line" : f.rows.length + " Lines");
@@ -420,11 +545,77 @@
         // Falling blocks can finish new rows or squares: a cascade.
         const next = findClears(S.grid);
         if (next.count) return runClear(next, streakMult, chain + 1, id);
-        S.resolving = false;
-        S.lastStep = performance.now();
-        updateBest(); updateHud();
+        finishResolve();
       }, wait);
     }, 320);
+  }
+
+  function finishResolve() {
+    S.resolving = false;
+    S.lastStep = performance.now();
+    updateBest();
+    updateHud();
+    if (S.shopPending && !S.over) openShop();
+  }
+
+  // ---------- bomb ----------
+  /** Blasts the 3x3 area around a cell, including the falling piece if it's caught in it. */
+  function detonate(r, c) {
+    if (S.bombs <= 0 || S.over) return;
+    r = Math.max(1, Math.min(ROWS - 2, r));
+    c = Math.max(1, Math.min(COLS - 2, c));
+    const now = performance.now();
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const b = S.grid[r + dr][c + dc];
+      if (b) { S.fades.push({ r: r + dr, c: c + dc, color: b.c, t0: now }); S.grid[r + dr][c + dc] = null; }
+    }
+    const f = S.falling;
+    if (f && f.shape.cells.some(([fr, fc]) => Math.abs(fr + f.r - r) <= 1 && Math.abs(fc + f.c - c) <= 1)) {
+      f.shape.cells.forEach(([fr, fc]) => S.fades.push({ r: fr + f.r, c: fc + f.c, color: f.shape.color, t0: now }));
+      S.falling = null;
+    }
+    S.bombs--;
+    S.aiming = false;
+    S.aimCell = null;
+    S.blast = { r, c, t0: now };
+    S.resolving = true;
+    buzz();
+    updateHud();
+    const id = gameId;
+    setTimeout(() => {
+      if (id !== gameId) return;
+      const drop = applyGravity();
+      const wait = drop > 0 ? Math.sqrt(2 * drop / GRAVITY) * 1000 + 80 : 0;
+      setTimeout(() => {
+        if (id !== gameId) return;
+        const next = findClears(S.grid);
+        if (next.count) return runClear(next, 1, 1, id);
+        finishResolve();
+      }, wait);
+    }, 220);
+  }
+
+  function setAiming(on) {
+    if (on && (S.bombs <= 0 || S.over || S.paused || S.shopOpen || S.resolving)) return;
+    S.aiming = on;
+    S.aimCell = null;
+    drag = null;
+    touch = null;
+    if (!on) S.lastStep = performance.now();
+    updateHud();
+  }
+
+  function reroll() {
+    if (S.rerolls <= 0 || frozen() || S.resolving) return;
+    const now = performance.now();
+    S.tray = S.tray.map((t, i) => {
+      if (!t) return t;
+      S.trayPop[i] = now + i * 60;
+      return randomShape(TRAY_F);
+    });
+    S.rerolls--;
+    tapHaptic();
+    updateHud();
   }
 
   function removeCells(f) {
@@ -456,7 +647,6 @@
     L.tw = Math.min(w, L.bw + cell * 2);
     L.tx = (w - L.tw) / 2;
     L.ty = L.by + L.bh + cell * 0.5;
-    L.tcell = Math.min(cell * 0.62, L.tw / 3 / 5.5, L.th / 5.5);
     L.w = w; L.h = h;
   }
   new ResizeObserver(layout).observe(stage);
@@ -568,6 +758,36 @@
     // ghost of the dragged shape
     if (target) shapeAt(S.tray[drag.i], bx + target[1] * s, by + target[0] * s, s, { alpha: 0.4 });
 
+    // bomb aiming: dim the board and outline the blast area
+    if (S.aiming) {
+      ctx.fillStyle = "rgba(10,12,30,0.35)";
+      ctx.fillRect(bx, by, bw, bh);
+      if (S.aimCell) {
+        const r = Math.max(1, Math.min(ROWS - 2, S.aimCell[0])) - 1;
+        const c = Math.max(1, Math.min(COLS - 2, S.aimCell[1])) - 1;
+        const pulse = 0.5 + 0.5 * Math.sin(now / 140);
+        ctx.fillStyle = rgba("#FF9AA2", 0.25 + pulse * 0.15);
+        rr(bx + c * s, by + r * s, s * 3, s * 3, s * 0.35); ctx.fill();
+        ctx.strokeStyle = "#FF9AA2"; ctx.lineWidth = 2.5;
+        rr(bx + c * s + 1, by + r * s + 1, s * 3 - 2, s * 3 - 2, s * 0.35); ctx.stroke();
+      }
+    }
+
+    // bomb blast ring
+    if (S.blast) {
+      const t = (now - S.blast.t0) / 450;
+      if (t >= 1) S.blast = null;
+      else {
+        ctx.save();
+        ctx.globalAlpha = 1 - t;
+        ctx.strokeStyle = "#FFE3A3"; ctx.lineWidth = s * 0.25 * (1 - t);
+        ctx.beginPath();
+        ctx.arc(bx + (S.blast.c + 0.5) * s, by + (S.blast.r + 0.5) * s, s * (0.5 + t * 2.4), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     // the drifting piece
     if (f) {
       const t = easeOut((now - f.moveT) / 240);
@@ -581,7 +801,8 @@
     // tray
     ctx.fillStyle = "rgba(255,255,255,0.06)";
     rr(L.tx, L.ty, L.tw, L.th, 20); ctx.fill();
-    const slotW = L.tw / 3, ts = L.tcell;
+    const slots = Math.max(3, S.tray.length);
+    const slotW = L.tw / slots, ts = Math.min(s * 0.62, slotW / 5.5, L.th / 5.5);
     S.tray.forEach((sh, i) => {
       if (!sh || (drag && drag.i === i)) return;
       const pop = easeOut((now - S.trayPop[i]) / 260);
@@ -600,6 +821,17 @@
       ctx.save();
       ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
       shapeAt(sh, cx - sh.w * s / 2, cy - sh.h * s / 2, s);
+      ctx.restore();
+    }
+
+    // aiming banner
+    if (S.aiming) {
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.font = `600 ${Math.round(s * 0.48)}px Fredoka, Nunito, sans-serif`;
+      ctx.fillStyle = "#F4F1FF";
+      ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 8;
+      ctx.fillText(S.aimCell ? "Release to blast" : "Tap where to blast", bx + bw / 2, by + s * 1.1);
       ctx.restore();
     }
 
@@ -637,7 +869,7 @@
       b.vy = Math.min(r, b.vy + b.v * dt);
       if (b.vy === r) b.v = 0;
     }
-    if (!S.over && !S.paused && !S.resolving && now - S.lastStep >= interval()) {
+    if (!frozen() && !S.resolving && now - S.lastStep >= interval()) {
       S.lastStep = now;
       tick(now);
     }
@@ -651,11 +883,23 @@
   // or on the board (tap = rotate falling piece, slide = move it left/right).
   const TAP_SLOP = 8;
   let touch = null;
+  const cellAt = (x, y) => [Math.floor((y - L.by) / L.cell), Math.floor((x - L.bx) / L.cell)];
+  const onBoard = (x, y) => x >= L.bx && x < L.bx + L.bw && y >= L.by && y < L.by + L.bh;
   cv.addEventListener("pointerdown", e => {
-    if (S.over || S.paused || touch) return;
+    if (S.over || S.paused || S.shopOpen || touch) return;
     const [x, y] = pos(e);
+    if (S.aiming) {
+      // While aiming, the board picks the blast spot. Anything else is ignored.
+      if (!onBoard(x, y)) return;
+      touch = { kind: "aim" };
+      S.aimCell = cellAt(x, y);
+      cv.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
     if (y >= L.ty && y <= L.ty + L.th && x >= L.tx && x <= L.tx + L.tw) {
-      const i = Math.min(2, Math.floor((x - L.tx) / (L.tw / 3)));
+      const slots = Math.max(3, S.tray.length);
+      const i = Math.min(slots - 1, Math.floor((x - L.tx) / (L.tw / slots)));
       if (!S.tray[i]) return;
       touch = { kind: "tray", i, x0: x, y0: y, moved: false };
     } else if (y < L.ty) {
@@ -668,6 +912,10 @@
   cv.addEventListener("pointermove", e => {
     if (!touch) return;
     const [x, y] = pos(e);
+    if (touch.kind === "aim") {
+      S.aimCell = onBoard(x, y) ? cellAt(x, y) : null;
+      return;
+    }
     if (Math.hypot(x - touch.x0, y - touch.y0) > TAP_SLOP) touch.moved = true;
     if (touch.kind === "tray") {
       if (touch.moved && S.tray[touch.i]) { drag = drag || { i: touch.i }; drag.x = x; drag.y = y; }
@@ -688,6 +936,10 @@
     if (!touch) return;
     const t = touch;
     touch = null;
+    if (t.kind === "aim") {
+      if (S.aimCell) detonate(S.aimCell[0], S.aimCell[1]);
+      return;
+    }
     if (t.kind === "tray") {
       if (drag) {
         const target = dropTarget();
@@ -722,7 +974,7 @@
   /** Slides the falling piece toward a column, one step at a time, stopping at blocks and walls. */
   function shiftFalling(target) {
     const f = S.falling;
-    if (!f || S.over || S.paused) return;
+    if (!f || frozen()) return;
     let c = f.c;
     while (c !== target) {
       const step = Math.sign(target - c);
@@ -735,7 +987,7 @@
   /** Moves the falling piece down one row if it can. */
   function softDrop() {
     const f = S.falling;
-    if (!f || S.over || S.paused || !fits(f.shape.cells, f.r + 1, f.c)) return false;
+    if (!f || frozen() || !fits(f.shape.cells, f.r + 1, f.c)) return false;
     const now = performance.now();
     f.prevR = f.r;
     f.r++;
@@ -747,7 +999,7 @@
   /** Rotates the falling piece clockwise, nudging it sideways if it would hit something. */
   function rotateFalling() {
     const f = S.falling;
-    if (!f || S.over || S.paused) return;
+    if (!f || frozen()) return;
     const rot = rotateCW(f.shape);
     const baseR = f.r + Math.trunc((f.shape.h - rot.h) / 2);
     const baseC = f.c + Math.trunc((f.shape.w - rot.w) / 2);
@@ -762,7 +1014,7 @@
   }
 
   function rotateTray(i) {
-    if (!S.tray[i] || S.over || S.paused) return;
+    if (!S.tray[i] || frozen()) return;
     S.tray[i] = rotateCW(S.tray[i]);
     S.trayPop[i] = performance.now() - 140; // small bounce
   }
@@ -770,30 +1022,138 @@
   // ---------- HUD + overlays ----------
   const $ = id => document.getElementById(id);
   const scoreEl = $("score"), levelEl = $("level"), bestEl = $("best");
-  const pauseOverlay = $("pauseOverlay"), overOverlay = $("overOverlay");
+  const coinsEl = $("coins"), bombBtn = $("bombBtn"), rerollBtn = $("rerollBtn");
+  const pauseOverlay = $("pauseOverlay"), overOverlay = $("overOverlay"), shopOverlay = $("shopOverlay");
   const finalScore = $("finalScore"), finalBest = $("finalBest");
   const show = el => { el.hidden = false; }, hide = el => { el.hidden = true; };
   function updateHud() {
     scoreEl.textContent = S.score;
     levelEl.textContent = level();
     bestEl.textContent = Math.max(best, S.score);
+    coinsEl.textContent = S.coins;
+    $("bombCount").textContent = S.bombs;
+    $("rerollCount").textContent = S.rerolls;
+    const busy = S.over || S.paused || S.shopOpen;
+    bombBtn.disabled = busy || (S.bombs <= 0 && !S.aiming);
+    bombBtn.classList.toggle("active", S.aiming);
+    bombBtn.setAttribute("aria-label", S.aiming ? "Cancel bomb" : "Use bomb");
+    rerollBtn.disabled = busy || S.aiming || S.rerolls <= 0;
   }
   function setPaused(p) {
-    if (S.over) return;
+    if (S.over || S.shopOpen) return;
+    if (p && S.aiming) setAiming(false);
     S.paused = p;
     drag = null; touch = null;
     if (p) show(pauseOverlay); else { hide(pauseOverlay); S.lastStep = performance.now(); }
+    updateHud();
   }
+
+  // ---------- shop ----------
+  const ICONS = {
+    bomb: '<svg viewBox="0 0 24 24" fill="#F4F1FF"><circle cx="10" cy="14.5" r="7"/><path d="M14.5 9.5l3-3" stroke="#F4F1FF" stroke-width="2.4" stroke-linecap="round"/><circle cx="19" cy="5" r="2" fill="#F9E79F"/></svg>',
+    extra: '<svg viewBox="0 0 24 24" fill="none" stroke="#A8E6CF" stroke-width="2.4" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M12 8v8M8 12h8"/></svg>',
+    slow: '<svg viewBox="0 0 24 24" fill="none" stroke="#8FD3F4" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9s10 4 10 9"/></svg>',
+    reroll: '<svg viewBox="0 0 24 24" fill="none" stroke="#B5A8F0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12A8 8 0 0 1 18.3 7.1"/><path d="M18.5 3v4.3h-4.3M5.5 21v-4.3h4.3"/></svg>',
+  };
+  const COIN = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#2B2F5C" opacity="0.25"/><circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>';
+  const SHOP = [
+    { id: "bomb", name: "Bomb", price: 15, max: 3,
+      desc: "Blast a 3×3 area in an emergency. Hold up to 3.",
+      owned: () => S.bombs, buy: () => { S.bombs++; } },
+    { id: "extra", name: "Extra Shape", price: 12, max: 1,
+      desc: "A 4th shape in your tray for this level.",
+      owned: () => (S.extraSlot ? 1 : 0), buy: () => { S.extraSlot = true; addExtraSlot(); } },
+    { id: "slow", name: "Slow Time", price: 10, max: 1,
+      desc: "Pieces fall 40% slower for this level.",
+      owned: () => (S.slowTime ? 1 : 0), buy: () => { S.slowTime = true; } },
+    { id: "reroll", name: "Reroll", price: 4, max: 5,
+      desc: "Swap your tray for new shapes. Hold up to 5.",
+      owned: () => S.rerolls, buy: () => { S.rerolls++; } },
+  ];
+
+  function addExtraSlot() {
+    while (S.tray.length < 4) {
+      S.tray.push(randomShape(TRAY_F));
+      S.trayPop.push(performance.now() + 300);
+    }
+  }
+
+  function openShop() {
+    S.shopPending = false;
+    S.shopOpen = true;
+    if (S.aiming) setAiming(false);
+    drag = null; touch = null;
+    // Last level's one-level items run out as the new level starts.
+    S.extraSlot = false;
+    S.slowTime = false;
+    if (S.tray.length > 3 && !S.tray[3]) S.tray.length = 3;
+    $("shopTitle").textContent = "Level " + level();
+    $("shopBonus").textContent = S.levelBonus ? `+${S.levelBonus} level bonus` : "";
+    S.levelBonus = 0;
+    renderShop();
+    show(shopOverlay);
+    updateHud();
+    $("shopContinue").focus({ preventScroll: true });
+  }
+
+  function closeShop() {
+    S.shopOpen = false;
+    hide(shopOverlay);
+    S.lastStep = performance.now();
+    updateHud();
+  }
+
+  function renderShop() {
+    $("shopCoins").textContent = S.coins;
+    const list = $("shopItems");
+    list.innerHTML = "";
+    SHOP.forEach(item => {
+      const owned = item.owned();
+      const maxed = owned >= item.max;
+      const row = document.createElement("div");
+      row.className = "item";
+      row.innerHTML = `
+        <div class="ico">${ICONS[item.id]}</div>
+        <div class="text">
+          <div class="name">${item.name}${item.max > 1 && owned ? `<span class="owned">have ${owned}</span>` : ""}</div>
+          <div class="desc">${item.desc}</div>
+        </div>`;
+      const btn = document.createElement("button");
+      btn.className = "buy";
+      btn.id = "buy-" + item.id;
+      btn.disabled = maxed || S.coins < item.price;
+      btn.innerHTML = maxed ? (item.max > 1 ? "Full" : "Active") : `${COIN}${item.price}`;
+      btn.setAttribute("aria-label", maxed ? `${item.name}: ${item.max > 1 ? "full" : "active"}` : `Buy ${item.name} for ${item.price} coins`);
+      btn.addEventListener("click", () => {
+        if (S.coins < item.price || item.owned() >= item.max) return;
+        S.coins -= item.price;
+        item.buy();
+        tapHaptic();
+        renderShop();
+        updateHud();
+      });
+      row.appendChild(btn);
+      list.appendChild(row);
+    });
+  }
+
+  $("shopContinue").addEventListener("click", closeShop);
+  bombBtn.addEventListener("click", () => setAiming(!S.aiming));
+  rerollBtn.addEventListener("click", reroll);
   $("pauseBtn").addEventListener("click", () => setPaused(!S.paused));
   $("resumeBtn").addEventListener("click", () => setPaused(false));
   $("restartBtn").addEventListener("click", () => newGame());
   $("againBtn").addEventListener("click", () => newGame());
   document.addEventListener("visibilitychange", () => { if (document.hidden) setPaused(true); });
   document.addEventListener("keydown", e => {
+    if (S.shopOpen) return;
+    if (e.key === "Escape" && S.aiming) return setAiming(false);
     if (e.key === "p" || e.key === "Escape") return setPaused(!S.paused);
+    if (e.key === "b") return setAiming(!S.aiming);
     if (!S.falling) return;
     if (e.key === "ArrowLeft") shiftFalling(S.falling.c - 1);
     else if (e.key === "ArrowRight") shiftFalling(S.falling.c + 1);
+    else if (e.key === "ArrowDown") { e.preventDefault(); softDrop(); }
     else if (e.key === "ArrowUp" || e.key === " ") { e.preventDefault(); rotateFalling(); }
   });
 
@@ -801,8 +1161,14 @@
   window.claude?.hot?.snapshot?.(() => ({
     grid: S.grid, tray: S.tray.map(t => t && { cells: t.cells, color: t.color }),
     score: S.score, clears: S.clears, streak: S.streak,
+    coins: S.coins, bombs: S.bombs, rerolls: S.rerolls, extraSlot: S.extraSlot, slowTime: S.slowTime,
   }));
-  const start = data => { newGame(data && data.grid ? data : null); requestAnimationFrame(frame); };
+  const start = data => {
+    newGame(data && data.grid ? data : null);
+    // Test hook: #shop-preview opens the shop with some coins.
+    if (location.hash === "#shop-preview") { S.coins = 40; S.levelBonus = 5; openShop(); }
+    requestAnimationFrame(frame);
+  };
   window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
 })();
 </script>
