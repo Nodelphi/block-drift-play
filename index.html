@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Block Drift">
+<meta name="theme-color" content="#1F2A4D">
+<meta name="description" content="A calm puzzle game: Tetris pieces drift down while you drag shapes in to clear rows and 3x3 squares.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  body { margin: 0; -webkit-touch-callout: none; overscroll-behavior: none; }
+  [hidden] { display: none !important; }
+</style>
+<title>Block Drift</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;700;800&display=swap">
+<style>
+  /* Layout: one calm column at dusk. Score strip, tall 9x15 board split into 3x3 squares, tray of three shapes. */
+  :root {
+    --dusk-top: #1F2A4D;
+    --dusk-mid: #3B3F7A;
+    --dusk-low: #6E5E99;
+    --ink: #F4F1FF;
+    --ink-dim: rgba(244, 241, 255, 0.6);
+    --veil: rgba(14, 16, 38, 0.55);
+    --card: rgba(255, 255, 255, 0.08);
+    --card-line: rgba(255, 255, 255, 0.14);
+    --mint: #A8E6CF;
+    --pill-ink: #2B2F5C;
+    --font-display: "Fredoka", "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    --font-body: "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  html { height: 100%; box-sizing: border-box; background: var(--dusk-top); }
+  *, *::before, *::after { box-sizing: inherit; }
+  body {
+    height: 100%;
+    background: linear-gradient(180deg, var(--dusk-top) 0%, var(--dusk-mid) 55%, var(--dusk-low) 100%);
+    background-color: var(--dusk-top);
+    color: var(--ink);
+    font-family: var(--font-body);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 12px;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .column { width: 100%; max-width: 520px; margin-inline: auto; }
+
+  header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 10px;
+  }
+  .stat { display: flex; flex-direction: column; min-width: 0; }
+  .stat.mid { align-items: center; }
+  .stat.end { align-items: flex-end; }
+  .stat .label {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: var(--ink-dim);
+  }
+  .stat .value {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.75rem;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .icon-btn {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: 1px solid var(--card-line);
+    background: var(--card);
+    color: var(--ink);
+    display: grid; place-items: center;
+    cursor: pointer;
+  }
+  .icon-btn:focus-visible, .pill:focus-visible, .text-btn:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+  .icon-btn svg { width: 16px; height: 16px; fill: currentColor; }
+
+  #stage { flex: 1; min-height: 0; position: relative; }
+  #board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+
+  .hint {
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--ink-dim);
+    padding-top: 8px;
+    text-wrap: balance;
+  }
+
+  .overlay {
+    position: fixed; inset: 0;
+    background: var(--veil);
+    display: grid; place-items: center;
+    padding: 24px;
+    z-index: 20;
+    animation: fade 0.3s ease;
+  }
+  .sheet {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    padding: 32px 40px;
+    border-radius: 28px;
+    background: rgba(59, 63, 122, 0.72);
+    border: 1px solid var(--card-line);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    text-align: center;
+  }
+  .sheet h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 2rem; text-wrap: balance; }
+  .sheet .big { font-family: var(--font-display); font-weight: 700; font-size: 3.4rem; line-height: 1; font-variant-numeric: tabular-nums; }
+  .sheet .sub { color: var(--ink-dim); font-weight: 700; }
+  .pill {
+    margin-top: 6px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.15rem;
+    color: var(--pill-ink);
+    background: linear-gradient(180deg, #CDF3E3, var(--mint));
+    border: 0;
+    border-radius: 999px;
+    padding: 13px 34px;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+  .pill:active { transform: scale(0.96); }
+  .text-btn { background: none; border: 0; color: var(--ink-dim); font: 700 1rem var(--font-body); cursor: pointer; padding: 6px 10px; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .overlay { animation: none; } }
+</style>
+</head>
+<body>
+<header class="column">
+  <div class="stat"><span class="label">SCORE</span><span class="value" id="score">0</span></div>
+  <div class="stat mid"><span class="label">LEVEL</span><span class="value" id="level">1</span></div>
+  <div class="stat end"><span class="label">BEST</span><span class="value" id="best">0</span></div>
+  <button class="icon-btn" id="pauseBtn" aria-label="Pause">
+    <svg viewBox="0 0 16 16" id="pauseIcon"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg>
+  </button>
+</header>
+
+<div id="stage" class="column"><canvas id="board" aria-label="Game board"></canvas></div>
+<p class="hint column">Drag a shape onto the board. Fill a row or a 3×3 square to clear it.</p>
+
+<div class="overlay" id="pauseOverlay" hidden>
+  <div class="sheet">
+    <h2>Paused</h2>
+    <button class="pill" id="resumeBtn">Resume</button>
+    <button class="text-btn" id="restartBtn">New game</button>
+  </div>
+</div>
+<div class="overlay" id="overOverlay" hidden>
+  <div class="sheet">
+    <h2>Board full</h2>
+    <div class="big" id="finalScore">0</div>
+    <div class="sub" id="finalBest">Best 0</div>
+    <button class="pill" id="againBtn">Play again</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const ROWS = 15, COLS = 9, SQ = 3;
+  const COLORS = ["#FF9AA2", "#FFC3A0", "#F9E79F", "#A8E6CF", "#8FD3F4", "#B5A8F0", "#F5B3E0"];
+  const TRAY = ["X", "XX", "XXX", "XXXX", "XXXXX", "XX/XX", "X./XX", "X../XXX", "..X/XXX", "XXX/.X.",
+                ".XX/XX.", "XX./.XX", "X../X../XXX", ".X./XXX/.X.", "XXX/XXX"];
+  const TETRO = ["XXXX", "XX/XX", "XXX/.X.", ".XX/XX.", "XX./.XX", "X../XXX", "..X/XXX"];
+
+  // ---------- shapes ----------
+  const norm = pts => {
+    const mr = Math.min(...pts.map(p => p[0])), mc = Math.min(...pts.map(p => p[1]));
+    return pts.map(([r, c]) => [r - mr, c - mc]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  };
+  const parse = p => {
+    const pts = [];
+    p.split("/").forEach((line, r) => [...line].forEach((ch, c) => { if (ch === "X") pts.push([r, c]); }));
+    return norm(pts);
+  };
+  const rotations = pts => {
+    const out = [], seen = new Set();
+    let cur = norm(pts);
+    for (let i = 0; i < 4; i++) {
+      const key = JSON.stringify(cur);
+      if (!seen.has(key)) { seen.add(key); out.push(cur); }
+      cur = norm(cur.map(([r, c]) => [c, -r]));
+    }
+    return out;
+  };
+  const TRAY_F = TRAY.map(p => rotations(parse(p)));
+  const TETRO_F = TETRO.map(p => rotations(parse(p)));
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  const makeShape = (cells, color) => ({
+    cells, color,
+    w: Math.max(...cells.map(p => p[1])) + 1,
+    h: Math.max(...cells.map(p => p[0])) + 1,
+  });
+  const randomShape = fams => makeShape(pick(pick(fams)), Math.floor(Math.random() * COLORS.length));
+
+  // ---------- storage ----------
+  const loadBest = () => { try { return parseInt(localStorage.getItem("blockDriftBest") || "0", 10) || 0; } catch { return 0; } };
+  const saveBest = v => { try { localStorage.setItem("blockDriftBest", String(v)); } catch {} };
+
+  // ---------- state ----------
+  let S, drag = null, gameId = 0, best = loadBest();
+  const emptyGrid = () => Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  const level = () => Math.floor(S.clears / 10) + 1;
+  const interval = () => Math.max(500, 1300 - (level() - 1) * 80);
+
+  function findClears(g) {
+    const rows = [], squares = [];
+    for (let r = 0; r < ROWS; r++) if (g[r].every(v => v !== null)) rows.push(r);
+    for (let t = 0; t < ROWS; t += SQ) for (let l = 0; l < COLS; l += SQ) {
+      let full = true;
+      for (let dr = 0; dr < SQ; dr++) for (let dc = 0; dc < SQ; dc++) if (g[t + dr][l + dc] === null) full = false;
+      if (full) squares.push([t, l]);
+    }
+    return { rows, squares, count: rows.length + squares.length };
+  }
+  function clearKeys(f) {
+    const s = new Set();
+    f.rows.forEach(r => { for (let c = 0; c < COLS; c++) s.add(r * COLS + c); });
+    f.squares.forEach(([t, l]) => { for (let dr = 0; dr < SQ; dr++) for (let dc = 0; dc < SQ; dc++) s.add((t + dr) * COLS + l + dc); });
+    return s;
+  }
+
+  function freshTray(now) {
+    S.tray = [0, 1, 2].map(() => randomShape(TRAY_F));
+    S.trayPop = [now, now + 60, now + 120];
+  }
+
+  function newGame(restore) {
+    gameId++;
+    const now = performance.now();
+    S = {
+      grid: emptyGrid(), falling: null, tray: [], trayPop: [0, 0, 0],
+      score: 0, clears: 0, streak: 0, over: false, paused: false,
+      clearing: new Set(), resolving: false, popup: null, fades: [], lastStep: now,
+    };
+    drag = null;
+    if (restore && restore.grid) {
+      S.grid = restore.grid.map((row, r) => row.map(v =>
+        v === null || v === undefined ? null : newBlock(typeof v === "number" ? v : v.c, r)));
+      S.tray = restore.tray.map(t => t && makeShape(t.cells, t.color));
+      S.score = restore.score || 0; S.clears = restore.clears || 0; S.streak = restore.streak || 0;
+    } else {
+      freshTray(now);
+      seedRubble(3);
+    }
+    hide(pauseOverlay); hide(overOverlay);
+    updateHud();
+  }
+
+  function seedRubble(n) {
+    for (let r = ROWS - n; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        if (Math.random() < 0.55) S.grid[r][c] = newBlock(Math.floor(Math.random() * COLORS.length), r);
+    applyGravity();
+    let f = findClears(S.grid);
+    while (f.count) {
+      if (f.rows.length) S.grid[f.rows[0]][Math.floor(Math.random() * COLS)] = null;
+      else { const [t, l] = f.squares[0]; S.grid[t + Math.floor(Math.random() * 3)][l + Math.floor(Math.random() * 3)] = null; }
+      applyGravity();
+      f = findClears(S.grid);
+    }
+    // Start settled, with no falling animation.
+    S.grid.forEach((row, r) => row.forEach(b => { if (b) { b.vy = r; b.v = 0; } }));
+  }
+
+  // A settled block: color index, plus the row it is drawn at (vy) and its fall speed (v).
+  const newBlock = (c, r) => ({ c, vy: r, v: 0 });
+  const GRAVITY = 60; // rows per second squared
+
+  /** Drops every block straight down its column. The falling piece counts as solid. Returns the longest drop. */
+  function applyGravity() {
+    const fk = fallingKeys();
+    let maxDrop = 0;
+    for (let c = 0; c < COLS; c++) {
+      let landing = ROWS - 1;
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (fk.has(r * COLS + c)) { landing = r - 1; continue; }
+        const b = S.grid[r][c];
+        if (!b) continue;
+        if (landing !== r) {
+          S.grid[landing][c] = b;
+          S.grid[r][c] = null;
+          maxDrop = Math.max(maxDrop, landing - r);
+        }
+        landing--;
+      }
+    }
+    return maxDrop;
+  }
+
+  const inBounds = (r, c) => r >= 0 && r < ROWS && c >= 0 && c < COLS;
+  const fits = (cells, r0, c0) => cells.every(([r, c]) => inBounds(r + r0, c + c0) && S.grid[r + r0][c + c0] === null);
+  const fallingKeys = () => {
+    const f = S.falling;
+    return new Set(f ? f.shape.cells.map(([r, c]) => (r + f.r) * COLS + c + f.c) : []);
+  };
+  const canPlace = (shape, r0, c0) => {
+    const fk = fallingKeys();
+    return shape.cells.every(([r, c]) => inBounds(r + r0, c + c0) && S.grid[r + r0][c + c0] === null && !fk.has((r + r0) * COLS + c + c0));
+  };
+
+  // ---------- game flow ----------
+  function tick(now) {
+    const f = S.falling;
+    if (!f) return spawn(now);
+    if (fits(f.shape.cells, f.r + 1, f.c)) { f.prevR = f.r; f.r++; f.moveT = now; }
+    else lock();
+  }
+  function spawn(now) {
+    const shape = randomShape(TETRO_F);
+    const cols = [];
+    for (let c = 0; c <= COLS - shape.w; c++) if (fits(shape.cells, 0, c)) cols.push(c);
+    if (!cols.length) return endGame();
+    S.falling = { shape, r: 0, c: pick(cols), prevR: -shape.h, moveT: now };
+  }
+  function lock() {
+    const f = S.falling;
+    f.shape.cells.forEach(([r, c]) => { S.grid[r + f.r][c + f.c] = newBlock(f.shape.color, r + f.r); });
+    S.falling = null;
+    resolve(false);
+  }
+  function endGame() {
+    S.over = true; S.falling = null; drag = null;
+    updateBest();
+    finalScore.textContent = S.score;
+    finalBest.textContent = S.score > 0 && S.score >= best ? "New best!" : "Best " + best;
+    show(overOverlay);
+  }
+  function updateBest() { if (S.score > best) { best = S.score; saveBest(best); } }
+
+  function place(i, [r0, c0]) {
+    const shape = S.tray[i];
+    shape.cells.forEach(([r, c]) => { S.grid[r + r0][c + c0] = newBlock(shape.color, r + r0); });
+    S.tray[i] = null;
+    S.score += shape.cells.length;
+    if (S.tray.every(t => !t)) freshTray(performance.now());
+    resolve(true);
+    updateBest();
+    updateHud();
+  }
+
+  function resolve(byPlayer) {
+    const f = findClears(S.grid);
+    if (!f.count) { if (byPlayer) S.streak = 0; return; }
+    // Clearing with your own pieces builds a streak multiplier.
+    if (byPlayer) S.streak++;
+    S.resolving = true;
+    runClear(f, byPlayer ? Math.max(1, S.streak) : 1, 1, gameId);
+  }
+
+  function runClear(f, streakMult, chain, id) {
+    const mult = streakMult * chain;
+    const points = (f.count * 18 + (f.count - 1) * 18) * mult;
+    S.score += points;
+    S.clears += f.count;
+
+    const parts = [];
+    if (f.rows.length) parts.push(f.rows.length === 1 ? "Line" : f.rows.length + " Lines");
+    if (f.squares.length) parts.push(f.squares.length === 1 ? "Square" : f.squares.length + " Squares");
+    let title = parts.join(" + ");
+    if (chain > 1) title = "Cascade! " + title;
+    if (mult > 1) title += "  ·  ×" + mult;
+    S.popup = { title, points, t0: performance.now() };
+    S.clearing = clearKeys(f);
+    updateHud();
+
+    setTimeout(() => {
+      if (id !== gameId) return;
+      removeCells(f);
+      S.clearing = new Set();
+      // Everything above drops into the gaps.
+      const drop = applyGravity();
+      const wait = drop > 0 ? Math.sqrt(2 * drop / GRAVITY) * 1000 + 80 : 0;
+      setTimeout(() => {
+        if (id !== gameId) return;
+        // Falling blocks can finish new rows or squares: a cascade.
+        const next = findClears(S.grid);
+        if (next.count) return runClear(next, streakMult, chain + 1, id);
+        S.resolving = false;
+        S.lastStep = performance.now();
+        updateBest(); updateHud();
+      }, wait);
+    }, 320);
+  }
+
+  function removeCells(f) {
+    const now = performance.now();
+    clearKeys(f).forEach(k => {
+      const r = Math.floor(k / COLS), c = k % COLS;
+      const b = S.grid[r][c];
+      if (b) S.fades.push({ r, c, color: b.c, t0: now });
+      S.grid[r][c] = null;
+    });
+  }
+
+  // ---------- layout ----------
+  const stage = document.getElementById("stage");
+  const cv = document.getElementById("board");
+  const ctx = cv.getContext("2d");
+  const L = {};
+  function layout() {
+    const w = stage.clientWidth, h = stage.clientHeight, dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const cell = Math.max(10, Math.floor(Math.min(w / COLS, h / (ROWS + 4.1))));
+    L.cell = cell;
+    L.bw = cell * COLS; L.bh = cell * ROWS;
+    L.th = cell * 3.6;
+    const total = L.bh + cell * 0.5 + L.th;
+    L.bx = Math.round((w - L.bw) / 2);
+    L.by = Math.max(0, Math.round((h - total) / 2));
+    L.tw = Math.min(w, L.bw + cell * 2);
+    L.tx = (w - L.tw) / 2;
+    L.ty = L.by + L.bh + cell * 0.5;
+    L.tcell = Math.min(cell * 0.62, L.tw / 3 / 5.5, L.th / 5.5);
+    L.w = w; L.h = h;
+  }
+  new ResizeObserver(layout).observe(stage);
+  layout();
+
+  // ---------- drawing ----------
+  const hexToRgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const mix = (hex, amt) => { const [r, g, b] = hexToRgb(hex); return `rgb(${r + (255 - r) * amt | 0},${g + (255 - g) * amt | 0},${b + (255 - b) * amt | 0})`; };
+  const rgba = (hex, a) => { const [r, g, b] = hexToRgb(hex); return `rgba(${r},${g},${b},${a})`; };
+  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
+  const easeOut = t => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+
+  function block(x, y, s, color, opt = {}) {
+    const { alpha = 1, hi = false, scale = 1, glow = false } = opt;
+    const pad = s * 0.05, size = (s - pad * 2) * scale;
+    const ox = x + (s - size) / 2, oy = y + (s - size) / 2, rad = size * 0.25;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (hi || glow) { ctx.shadowColor = rgba(color, hi ? 0.95 : 0.5); ctx.shadowBlur = hi ? s * 0.6 : s * 0.25; }
+    const g = ctx.createLinearGradient(0, oy, 0, oy + size);
+    g.addColorStop(0, mix(color, hi ? 0.6 : 0.32));
+    g.addColorStop(1, hi ? mix(color, 0.25) : color);
+    ctx.fillStyle = g;
+    rr(ox, oy, size, size, rad); ctx.fill();
+    ctx.shadowBlur = 0;
+    const lw = Math.max(1, s * 0.06);
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = `rgba(255,255,255,${hi ? 0.9 : 0.35})`;
+    rr(ox + lw / 2, oy + lw / 2, size - lw, size - lw, rad - lw / 2); ctx.stroke();
+    ctx.restore();
+  }
+  function shapeAt(shape, x, y, s, opt) {
+    shape.cells.forEach(([r, c]) => block(x + c * s, y + r * s, s, COLORS[shape.color], opt));
+  }
+
+  function floatCenter() {
+    const sh = S.tray[drag.i];
+    return [drag.x, drag.y - (L.cell * 1.4 + sh.h * L.cell / 2)];
+  }
+  function dropTarget() {
+    if (!drag || S.resolving) return null;
+    const sh = S.tray[drag.i];
+    const [cx, cy] = floatCenter();
+    const c = Math.round((cx - L.bx) / L.cell - sh.w / 2);
+    const r = Math.round((cy - L.by) / L.cell - sh.h / 2);
+    return canPlace(sh, r, c) ? [r, c] : null;
+  }
+
+  function draw(now) {
+    const { cell: s, bx, by, bw, bh } = L;
+    ctx.clearRect(0, 0, L.w, L.h);
+
+    // board
+    ctx.save();
+    rr(bx, by, bw, bh, 16); ctx.clip();
+    ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fillRect(bx, by, bw, bh);
+    for (let br = 0; br < ROWS / SQ; br++) for (let bc = 0; bc < COLS / SQ; bc++) {
+      ctx.fillStyle = (br + bc) % 2 === 0 ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.025)";
+      ctx.fillRect(bx + bc * SQ * s, by + br * SQ * s, SQ * s, SQ * s);
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      rr(bx + c * s + s * 0.1, by + r * s + s * 0.1, s * 0.8, s * 0.8, s * 0.2); ctx.fill();
+    }
+
+    // landing guide for the falling piece
+    const f = S.falling;
+    if (f) {
+      let lr = f.r;
+      while (fits(f.shape.cells, lr + 1, f.c)) lr++;
+      ctx.strokeStyle = rgba(COLORS[f.shape.color], 0.45);
+      ctx.lineWidth = 1.5;
+      f.shape.cells.forEach(([r, c]) => { rr(bx + (c + f.c) * s + s * 0.09, by + (r + lr) * s + s * 0.09, s * 0.82, s * 0.82, s * 0.2); ctx.stroke(); });
+    }
+
+    // preview of what would clear
+    const target = drag ? dropTarget() : null;
+    let preview = new Set();
+    if (target) {
+      const sh = S.tray[drag.i];
+      const g = S.grid.map(row => row.slice());
+      sh.cells.forEach(([r, c]) => { g[r + target[0]][c + target[1]] = sh.color; });
+      preview = clearKeys(findClears(g));
+    }
+
+    // settled blocks
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      const b = S.grid[r][c];
+      if (!b) continue;
+      const k = r * COLS + c;
+      const clearing = S.clearing.has(k);
+      block(bx + c * s, by + b.vy * s, s, COLORS[b.c], { hi: clearing || preview.has(k), scale: clearing ? 1.1 : 1 });
+    }
+
+    // soft bursts where blocks cleared
+    S.fades = S.fades.filter(p => now - p.t0 < 420);
+    S.fades.forEach(p => {
+      const t = (now - p.t0) / 420;
+      block(bx + p.c * s, by + p.r * s, s, COLORS[p.color], { alpha: 1 - t, scale: 1 + t * 0.6, glow: true });
+    });
+
+    // ghost of the dragged shape
+    if (target) shapeAt(S.tray[drag.i], bx + target[1] * s, by + target[0] * s, s, { alpha: 0.4 });
+
+    // the drifting piece
+    if (f) {
+      const t = easeOut((now - f.moveT) / 240);
+      const yr = f.prevR + (f.r - f.prevR) * t;
+      shapeAt(f.shape, bx + f.c * s, by + yr * s, s, { glow: true });
+    }
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 1;
+    rr(bx + 0.5, by + 0.5, bw - 1, bh - 1, 16); ctx.stroke();
+
+    // tray
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    rr(L.tx, L.ty, L.tw, L.th, 20); ctx.fill();
+    const slotW = L.tw / 3, ts = L.tcell;
+    S.tray.forEach((sh, i) => {
+      if (!sh || (drag && drag.i === i)) return;
+      const pop = easeOut((now - S.trayPop[i]) / 260);
+      if (pop <= 0) return;
+      const cx = L.tx + slotW * (i + 0.5), cy = L.ty + L.th / 2;
+      ctx.save();
+      ctx.translate(cx, cy); ctx.scale(0.5 + pop * 0.5, 0.5 + pop * 0.5);
+      shapeAt(sh, -sh.w * ts / 2, -sh.h * ts / 2, ts, { alpha: pop });
+      ctx.restore();
+    });
+
+    // shape under the finger
+    if (drag) {
+      const sh = S.tray[drag.i];
+      const [cx, cy] = floatCenter();
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
+      shapeAt(sh, cx - sh.w * s / 2, cy - sh.h * s / 2, s);
+      ctx.restore();
+    }
+
+    // score popup
+    if (S.popup) {
+      const age = now - S.popup.t0;
+      if (age > 1500) S.popup = null;
+      else {
+        const inT = easeOut(age / 260), outT = age > 1100 ? (age - 1100) / 400 : 0;
+        ctx.save();
+        ctx.globalAlpha = inT * (1 - outT);
+        ctx.translate(bx + bw / 2, by + s * 2.4 - outT * s);
+        ctx.scale(0.7 + inT * 0.3, 0.7 + inT * 0.3);
+        ctx.textAlign = "center"; ctx.fillStyle = "#F4F1FF";
+        ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 10;
+        ctx.font = `600 ${Math.round(s * 0.5)}px Fredoka, Nunito, sans-serif`;
+        ctx.fillText(S.popup.title, 0, 0);
+        ctx.font = `700 ${Math.round(s * 0.85)}px Fredoka, Nunito, sans-serif`;
+        ctx.fillText("+" + S.popup.points, 0, s * 0.95);
+        ctx.restore();
+      }
+    }
+  }
+
+  let lastFrame = performance.now();
+  function frame(now) {
+    // Blocks dropping after a clear accelerate until they land.
+    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      const b = S.grid[r][c];
+      if (!b || b.vy === r) continue;
+      if (b.vy > r) { b.vy = r; b.v = 0; continue; }
+      b.v += GRAVITY * dt;
+      b.vy = Math.min(r, b.vy + b.v * dt);
+      if (b.vy === r) b.v = 0;
+    }
+    if (!S.over && !S.paused && !S.resolving && now - S.lastStep >= interval()) {
+      S.lastStep = now;
+      tick(now);
+    }
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- input ----------
+  const pos = e => { const b = cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  cv.addEventListener("pointerdown", e => {
+    if (S.over || S.paused) return;
+    const [x, y] = pos(e);
+    if (y < L.ty || y > L.ty + L.th || x < L.tx || x > L.tx + L.tw) return;
+    const i = Math.floor((x - L.tx) / (L.tw / 3));
+    if (!S.tray[i]) return;
+    drag = { i, x, y };
+    cv.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  cv.addEventListener("pointermove", e => { if (drag) [drag.x, drag.y] = pos(e); });
+  const release = () => {
+    if (!drag) return;
+    const t = dropTarget();
+    const i = drag.i;
+    drag = null;
+    if (t) place(i, t);
+    else S.trayPop[i] = performance.now();
+  };
+  cv.addEventListener("pointerup", release);
+  cv.addEventListener("pointercancel", () => { if (drag) { S.trayPop[drag.i] = performance.now(); drag = null; } });
+
+  // ---------- HUD + overlays ----------
+  const $ = id => document.getElementById(id);
+  const scoreEl = $("score"), levelEl = $("level"), bestEl = $("best");
+  const pauseOverlay = $("pauseOverlay"), overOverlay = $("overOverlay");
+  const finalScore = $("finalScore"), finalBest = $("finalBest");
+  const show = el => { el.hidden = false; }, hide = el => { el.hidden = true; };
+  function updateHud() {
+    scoreEl.textContent = S.score;
+    levelEl.textContent = level();
+    bestEl.textContent = Math.max(best, S.score);
+  }
+  function setPaused(p) {
+    if (S.over) return;
+    S.paused = p;
+    drag = null;
+    if (p) show(pauseOverlay); else { hide(pauseOverlay); S.lastStep = performance.now(); }
+  }
+  $("pauseBtn").addEventListener("click", () => setPaused(!S.paused));
+  $("resumeBtn").addEventListener("click", () => setPaused(false));
+  $("restartBtn").addEventListener("click", () => newGame());
+  $("againBtn").addEventListener("click", () => newGame());
+  document.addEventListener("visibilitychange", () => { if (document.hidden) setPaused(true); });
+  document.addEventListener("keydown", e => { if (e.key === "p" || e.key === "Escape") setPaused(!S.paused); });
+
+  // Keep the game going across page updates.
+  window.claude?.hot?.snapshot?.(() => ({
+    grid: S.grid, tray: S.tray.map(t => t && { cells: t.cells, color: t.color }),
+    score: S.score, clears: S.clears, streak: S.streak,
+  }));
+  const start = data => { newGame(data && data.grid ? data : null); requestAnimationFrame(frame); };
+  window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
+</body>
+</html>
