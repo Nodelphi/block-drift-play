@@ -490,13 +490,20 @@
     rr(bx, by, bw, bh, 16); ctx.clip();
     ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fillRect(bx, by, bw, bh);
     for (let br = 0; br < ROWS / SQ; br++) for (let bc = 0; bc < COLS / SQ; bc++) {
-      ctx.fillStyle = (br + bc) % 2 === 0 ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.025)";
+      ctx.fillStyle = (br + bc) % 2 === 0 ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.03)";
       ctx.fillRect(bx + bc * SQ * s, by + br * SQ * s, SQ * s, SQ * s);
     }
-    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fillStyle = "rgba(255,255,255,0.07)";
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
       rr(bx + c * s + s * 0.1, by + r * s + s * 0.1, s * 0.8, s * 0.8, s * 0.2); ctx.fill();
     }
+    // Faint lines between the 3x3 squares.
+    ctx.strokeStyle = "rgba(255,255,255,0.14)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let c = SQ; c < COLS; c += SQ) { ctx.moveTo(bx + c * s, by); ctx.lineTo(bx + c * s, by + bh); }
+    for (let r = SQ; r < ROWS; r += SQ) { ctx.moveTo(bx, by + r * s); ctx.lineTo(bx + bw, by + r * s); }
+    ctx.stroke();
 
     // landing guide for the falling piece
     const f = S.falling;
