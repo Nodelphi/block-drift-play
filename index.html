@@ -156,7 +156,7 @@
 </header>
 
 <div id="stage" class="column"><canvas id="board" aria-label="Game board"></canvas></div>
-<p class="hint column">Tap to rotate · Slide on the board to steer · Drag shapes to place</p>
+<p class="hint column">Tap to rotate · Slide to steer or drop · Drag shapes to place</p>
 
 <div class="overlay" id="pauseOverlay" hidden>
   <div class="sheet">
@@ -212,6 +212,29 @@
   });
   const randomShape = fams => makeShape(pick(pick(fams)), Math.floor(Math.random() * COLORS.length));
 
+  // ---------- vibration ----------
+  // Android browsers support navigator.vibrate. iPhone Safari doesn't, but toggling a
+  // hidden iOS switch control triggers the system haptic tap (iOS 18 and later).
+  function tapHaptic() {
+    try {
+      const label = document.createElement("label");
+      label.ariaHidden = "true";
+      label.style.display = "none";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.setAttribute("switch", "");
+      label.appendChild(input);
+      document.head.appendChild(label);
+      label.click();
+      document.head.removeChild(label);
+    } catch {}
+  }
+  function buzz() {
+    try { if (navigator.vibrate && navigator.vibrate([40, 50, 70])) return; } catch {}
+    tapHaptic();
+    setTimeout(tapHaptic, 110);
+  }
+
   // ---------- storage ----------
   const loadBest = () => { try { return parseInt(localStorage.getItem("blockDriftBest") || "0", 10) || 0; } catch { return 0; } };
   const saveBest = v => { try { localStorage.setItem("blockDriftBest", String(v)); } catch {} };
@@ -220,7 +243,7 @@
   let S, drag = null, gameId = 0, pieceSeq = 0, best = loadBest();
   const emptyGrid = () => Array.from({ length: ROWS }, () => Array(COLS).fill(null));
   const level = () => Math.floor(S.clears / 10) + 1;
-  const interval = () => Math.max(500, 1300 - (level() - 1) * 80);
+  const interval = () => Math.max(300, 1300 - (level() - 1) * 120);
 
   function findClears(g) {
     const rows = [], squares = [];
@@ -382,6 +405,7 @@
     if (mult > 1) title += "  ·  ×" + mult;
     S.popup = { title, points, t0: performance.now() };
     S.clearing = clearKeys(f);
+    buzz();
     updateHud();
 
     setTimeout(() => {
@@ -490,7 +514,7 @@
     rr(bx, by, bw, bh, 16); ctx.clip();
     ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fillRect(bx, by, bw, bh);
     for (let br = 0; br < ROWS / SQ; br++) for (let bc = 0; bc < COLS / SQ; bc++) {
-      ctx.fillStyle = (br + bc) % 2 === 0 ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.03)";
+      ctx.fillStyle = (br + bc) % 2 === 0 ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.28)";
       ctx.fillRect(bx + bc * SQ * s, by + br * SQ * s, SQ * s, SQ * s);
     }
     ctx.fillStyle = "rgba(255,255,255,0.07)";
@@ -636,7 +660,7 @@
       touch = { kind: "tray", i, x0: x, y0: y, moved: false };
     } else if (y < L.ty) {
       const f = S.falling;
-      touch = { kind: "board", x0: x, y0: y, moved: false, pieceId: f ? f.id : null, startC: f ? f.c : 0 };
+      touch = { kind: "board", x0: x, y0: y, moved: false, pieceId: f ? f.id : null, startC: f ? f.c : 0, lastY: y };
     } else return;
     cv.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -651,8 +675,14 @@
     }
     const f = S.falling;
     if (!f) return;
-    if (touch.pieceId !== f.id) { touch.pieceId = f.id; touch.startC = f.c; touch.x0 = x; }
+    if (touch.pieceId !== f.id) { touch.pieceId = f.id; touch.startC = f.c; touch.x0 = x; touch.lastY = y; }
     shiftFalling(touch.startC + Math.round((x - touch.x0) / L.cell));
+    // Dragging down pulls the piece down one row per cell of finger travel.
+    if (y < touch.lastY) touch.lastY = y;
+    while (y - touch.lastY >= L.cell) {
+      touch.lastY += L.cell;
+      if (!softDrop()) break;
+    }
   });
   cv.addEventListener("pointerup", () => {
     if (!touch) return;
@@ -700,6 +730,18 @@
       c += step;
     }
     if (c !== f.c) setFallingColumn(f, c);
+  }
+
+  /** Moves the falling piece down one row if it can. */
+  function softDrop() {
+    const f = S.falling;
+    if (!f || S.over || S.paused || !fits(f.shape.cells, f.r + 1, f.c)) return false;
+    const now = performance.now();
+    f.prevR = f.r;
+    f.r++;
+    f.moveT = now;
+    S.lastStep = now;
+    return true;
   }
 
   /** Rotates the falling piece clockwise, nudging it sideways if it would hit something. */
