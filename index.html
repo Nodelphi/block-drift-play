@@ -156,7 +156,7 @@
 </header>
 
 <div id="stage" class="column"><canvas id="board" aria-label="Game board"></canvas></div>
-<p class="hint column">Drag a shape onto the board. Fill a row or a 3×3 square to clear it.</p>
+<p class="hint column">Tap to rotate · Slide on the board to steer · Drag shapes to place</p>
 
 <div class="overlay" id="pauseOverlay" hidden>
   <div class="sheet">
@@ -217,7 +217,7 @@
   const saveBest = v => { try { localStorage.setItem("blockDriftBest", String(v)); } catch {} };
 
   // ---------- state ----------
-  let S, drag = null, gameId = 0, best = loadBest();
+  let S, drag = null, gameId = 0, pieceSeq = 0, best = loadBest();
   const emptyGrid = () => Array.from({ length: ROWS }, () => Array(COLS).fill(null));
   const level = () => Math.floor(S.clears / 10) + 1;
   const interval = () => Math.max(500, 1300 - (level() - 1) * 80);
@@ -330,7 +330,8 @@
     const cols = [];
     for (let c = 0; c <= COLS - shape.w; c++) if (fits(shape.cells, 0, c)) cols.push(c);
     if (!cols.length) return endGame();
-    S.falling = { shape, r: 0, c: pick(cols), prevR: -shape.h, moveT: now };
+    const c = pick(cols);
+    S.falling = { id: ++pieceSeq, shape, r: 0, c, prevR: -shape.h, moveT: now, prevC: c, cMoveT: now };
   }
   function lock() {
     const f = S.falling;
@@ -540,7 +541,7 @@
     if (f) {
       const t = easeOut((now - f.moveT) / 240);
       const yr = f.prevR + (f.r - f.prevR) * t;
-      shapeAt(f.shape, bx + f.c * s, by + yr * s, s, { glow: true });
+      shapeAt(f.shape, bx + fallingX(f, now) * s, by + yr * s, s, { glow: true });
     }
     ctx.restore();
     ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 1;
@@ -615,27 +616,107 @@
 
   // ---------- input ----------
   const pos = e => { const b = cv.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  // A touch either starts in the tray (tap = rotate, move = drag onto board)
+  // or on the board (tap = rotate falling piece, slide = move it left/right).
+  const TAP_SLOP = 8;
+  let touch = null;
   cv.addEventListener("pointerdown", e => {
-    if (S.over || S.paused) return;
+    if (S.over || S.paused || touch) return;
     const [x, y] = pos(e);
-    if (y < L.ty || y > L.ty + L.th || x < L.tx || x > L.tx + L.tw) return;
-    const i = Math.floor((x - L.tx) / (L.tw / 3));
-    if (!S.tray[i]) return;
-    drag = { i, x, y };
+    if (y >= L.ty && y <= L.ty + L.th && x >= L.tx && x <= L.tx + L.tw) {
+      const i = Math.min(2, Math.floor((x - L.tx) / (L.tw / 3)));
+      if (!S.tray[i]) return;
+      touch = { kind: "tray", i, x0: x, y0: y, moved: false };
+    } else if (y < L.ty) {
+      const f = S.falling;
+      touch = { kind: "board", x0: x, y0: y, moved: false, pieceId: f ? f.id : null, startC: f ? f.c : 0 };
+    } else return;
     cv.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
-  cv.addEventListener("pointermove", e => { if (drag) [drag.x, drag.y] = pos(e); });
-  const release = () => {
-    if (!drag) return;
-    const t = dropTarget();
-    const i = drag.i;
+  cv.addEventListener("pointermove", e => {
+    if (!touch) return;
+    const [x, y] = pos(e);
+    if (Math.hypot(x - touch.x0, y - touch.y0) > TAP_SLOP) touch.moved = true;
+    if (touch.kind === "tray") {
+      if (touch.moved && S.tray[touch.i]) { drag = drag || { i: touch.i }; drag.x = x; drag.y = y; }
+      return;
+    }
+    const f = S.falling;
+    if (!f) return;
+    if (touch.pieceId !== f.id) { touch.pieceId = f.id; touch.startC = f.c; touch.x0 = x; }
+    shiftFalling(touch.startC + Math.round((x - touch.x0) / L.cell));
+  });
+  cv.addEventListener("pointerup", () => {
+    if (!touch) return;
+    const t = touch;
+    touch = null;
+    if (t.kind === "tray") {
+      if (drag) {
+        const target = dropTarget();
+        const i = drag.i;
+        drag = null;
+        if (target) place(i, target);
+        else S.trayPop[i] = performance.now();
+      } else if (!t.moved) {
+        rotateTray(t.i);
+      }
+    } else if (!t.moved) {
+      rotateFalling();
+    }
+  });
+  cv.addEventListener("pointercancel", () => {
+    if (drag) S.trayPop[drag.i] = performance.now();
     drag = null;
-    if (t) place(i, t);
-    else S.trayPop[i] = performance.now();
-  };
-  cv.addEventListener("pointerup", release);
-  cv.addEventListener("pointercancel", () => { if (drag) { S.trayPop[drag.i] = performance.now(); drag = null; } });
+    touch = null;
+  });
+
+  // ---------- moving and rotating ----------
+  const rotateCW = sh => makeShape(norm(sh.cells.map(([r, c]) => [c, sh.h - 1 - r])), sh.color);
+  const fallingX = (f, now) => f.prevC + (f.c - f.prevC) * easeOut((now - f.cMoveT) / 110);
+
+  function setFallingColumn(f, c) {
+    const now = performance.now();
+    f.prevC = fallingX(f, now);
+    f.c = c;
+    f.cMoveT = now;
+  }
+
+  /** Slides the falling piece toward a column, one step at a time, stopping at blocks and walls. */
+  function shiftFalling(target) {
+    const f = S.falling;
+    if (!f || S.over || S.paused) return;
+    let c = f.c;
+    while (c !== target) {
+      const step = Math.sign(target - c);
+      if (!fits(f.shape.cells, f.r, c + step)) break;
+      c += step;
+    }
+    if (c !== f.c) setFallingColumn(f, c);
+  }
+
+  /** Rotates the falling piece clockwise, nudging it sideways if it would hit something. */
+  function rotateFalling() {
+    const f = S.falling;
+    if (!f || S.over || S.paused) return;
+    const rot = rotateCW(f.shape);
+    const baseR = f.r + Math.trunc((f.shape.h - rot.h) / 2);
+    const baseC = f.c + Math.trunc((f.shape.w - rot.w) / 2);
+    for (const [dr, dc] of [[0, 0], [0, -1], [0, 1], [0, -2], [0, 2], [1, 0], [-1, 0]]) {
+      if (fits(rot.cells, baseR + dr, baseC + dc)) {
+        f.shape = rot;
+        f.r = f.prevR = baseR + dr;
+        setFallingColumn(f, baseC + dc);
+        return;
+      }
+    }
+  }
+
+  function rotateTray(i) {
+    if (!S.tray[i] || S.over || S.paused) return;
+    S.tray[i] = rotateCW(S.tray[i]);
+    S.trayPop[i] = performance.now() - 140; // small bounce
+  }
 
   // ---------- HUD + overlays ----------
   const $ = id => document.getElementById(id);
@@ -651,7 +732,7 @@
   function setPaused(p) {
     if (S.over) return;
     S.paused = p;
-    drag = null;
+    drag = null; touch = null;
     if (p) show(pauseOverlay); else { hide(pauseOverlay); S.lastStep = performance.now(); }
   }
   $("pauseBtn").addEventListener("click", () => setPaused(!S.paused));
@@ -659,7 +740,13 @@
   $("restartBtn").addEventListener("click", () => newGame());
   $("againBtn").addEventListener("click", () => newGame());
   document.addEventListener("visibilitychange", () => { if (document.hidden) setPaused(true); });
-  document.addEventListener("keydown", e => { if (e.key === "p" || e.key === "Escape") setPaused(!S.paused); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "p" || e.key === "Escape") return setPaused(!S.paused);
+    if (!S.falling) return;
+    if (e.key === "ArrowLeft") shiftFalling(S.falling.c - 1);
+    else if (e.key === "ArrowRight") shiftFalling(S.falling.c + 1);
+    else if (e.key === "ArrowUp" || e.key === " ") { e.preventDefault(); rotateFalling(); }
+  });
 
   // Keep the game going across page updates.
   window.claude?.hot?.snapshot?.(() => ({
