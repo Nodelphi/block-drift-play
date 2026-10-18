@@ -207,6 +207,27 @@
     transition: transform 0.15s ease;
   }
   .pill:active { transform: scale(0.96); }
+  /* Difficulty picker */
+  .sheet.menu { width: min(420px, 100%); gap: 14px; padding: 30px 20px 24px; background: rgba(45, 49, 102, 0.96); }
+  .modes { display: grid; gap: 10px; width: 100%; }
+  .mode {
+    display: grid; gap: 4px; text-align: left;
+    padding: 16px 18px;
+    border-radius: 20px;
+    border: 1px solid var(--card-line);
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .mode:active { transform: scale(0.98); }
+  .mode.last { border-color: rgba(168, 230, 207, 0.6); background: rgba(168, 230, 207, 0.1); }
+  .mode:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+  .mode .mname { font-family: var(--font-display); font-weight: 600; font-size: 1.3rem; }
+  .mode .mdesc { color: var(--ink-dim); font-weight: 700; font-size: 0.92rem; line-height: 1.35; }
+  .mode .mbest { color: var(--coin); font-weight: 800; font-size: 0.85rem; }
+  .shop .news { color: var(--mint); font-weight: 800; font-size: 0.95rem; }
   .text-btn { background: none; border: 0; color: var(--ink-dim); font: 700 1rem var(--font-body); cursor: pointer; padding: 6px 10px; }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .overlay { animation: none; } }
@@ -245,9 +266,9 @@
     <h2>Paused</h2>
     <ul class="howto">
       <li>Tap the board to rotate the falling piece</li>
-      <li>Slide left, right or down to steer it</li>
+      <li id="howtoSteer">Slide left, right or down to steer it</li>
       <li>Tap a shape to rotate it, drag to place it</li>
-      <li>Fill a row or a 3×3 square to clear it</li>
+      <li id="howtoClear">Fill a row or a 3×3 square to clear it</li>
       <li>Earn coins from clears. The shop opens each level.</li>
     </ul>
     <button class="pill" id="resumeBtn">Resume</button>
@@ -271,14 +292,44 @@
       <span id="shopCoins">0</span>
     </div>
     <div class="bonus" id="shopBonus">+5 level bonus</div>
+    <div class="news" id="shopNews" hidden></div>
     <div class="items" id="shopItems"></div>
     <button class="pill" id="shopContinue">Continue</button>
+  </div>
+</div>
+<div class="overlay" id="menuOverlay" hidden>
+  <div class="sheet menu" role="dialog" aria-labelledby="menuTitle">
+    <h2 id="menuTitle">Block Drift</h2>
+    <div class="sub">Choose a difficulty</div>
+    <div class="modes">
+      <button class="mode" id="mode-casual">
+        <span class="mname">Casual</span>
+        <span class="mdesc">Tall 9×15 board. Blocks drift down from above.</span>
+        <span class="mbest" id="best-casual"></span>
+      </button>
+      <button class="mode" id="mode-challenge">
+        <span class="mname">Challenge</span>
+        <span class="mdesc">Compact 9×9 board where columns clear too. From level 10, blocks drift in from the right, then the left, then below.</span>
+        <span class="mbest" id="best-challenge"></span>
+      </button>
+    </div>
   </div>
 </div>
 
 <script>
 (() => {
-  const ROWS = 15, COLS = 9, SQ = 3;
+  // Casual: the original tall board, pieces drift down. Challenge: a 9x9 board where columns
+  // clear too, and from level 10 pieces also drift in from the sides and below.
+  const MODES = {
+    casual: { rows: 15, cols: 9, columns: false, rubble: 3 },
+    challenge: { rows: 9, cols: 9, columns: true, rubble: 2 },
+  };
+  let ROWS = 15, COLS = 9;
+  const SQ = 3;
+  // Travel directions as [row step, column step]: from the top, from the right, from the left, from below.
+  const DIRS = [[1, 0], [0, -1], [0, 1], [-1, 0]];
+  // Challenge unlocks a new side at these levels.
+  const UNLOCKS = [{ level: 10, dir: 1, side: "the right" }, { level: 30, dir: 2, side: "the left" }, { level: 40, dir: 3, side: "below" }];
   const COLORS = ["#FF9AA2", "#FFC3A0", "#F9E79F", "#A8E6CF", "#8FD3F4", "#B5A8F0", "#F5B3E0"];
   const TRAY = ["X", "XX", "XXX", "XXXX", "XXXXX", "XX/XX", "X./XX", "X../XXX", "..X/XXX", "XXX/.X.",
                 ".XX/XX.", "XX./.XX", "X../X../XXX", ".X./XXX/.X.", "XXX/XXX"];
@@ -338,31 +389,40 @@
   }
 
   // ---------- storage ----------
-  const loadBest = () => { try { return parseInt(localStorage.getItem("blockDriftBest") || "0", 10) || 0; } catch { return 0; } };
-  const saveBest = v => { try { localStorage.setItem("blockDriftBest", String(v)); } catch {} };
+  const bestKey = m => m === "casual" ? "blockDriftBest" : "blockDriftBest-" + m;
+  const loadBest = m => { try { return parseInt(localStorage.getItem(bestKey(m)) || "0", 10) || 0; } catch { return 0; } };
+  const saveBest = (m, v) => { try { localStorage.setItem(bestKey(m), String(v)); } catch {} };
+  const loadMode = () => { try { const m = localStorage.getItem("blockDriftMode"); return MODES[m] ? m : "casual"; } catch { return "casual"; } };
+  const saveMode = m => { try { localStorage.setItem("blockDriftMode", m); } catch {} };
 
   // ---------- state ----------
-  let S, drag = null, gameId = 0, pieceSeq = 0, best = loadBest();
+  let mode = loadMode();
+  let S, drag = null, gameId = 0, pieceSeq = 0, best = loadBest(mode);
   const emptyGrid = () => Array.from({ length: ROWS }, () => Array(COLS).fill(null));
   const CLEARS_PER_LEVEL = 12;
   const level = () => Math.floor(S.clears / CLEARS_PER_LEVEL) + 1;
   const interval = () => Math.max(300, 1300 - (level() - 1) * 120) * (S.slowTime ? 1.6 : 1);
   // True while the board should hold still: paused, game over, shopping, or aiming a bomb.
-  const frozen = () => S.over || S.paused || S.shopOpen || S.aiming;
+  const frozen = () => S.over || S.paused || S.shopOpen || S.aiming || S.menu;
+  /** Sides pieces can come from at the current level. */
+  const unlockedDirs = () => mode === "challenge" ? [0, ...UNLOCKS.filter(u => level() >= u.level).map(u => u.dir)] : [0];
 
   function findClears(g) {
-    const rows = [], squares = [];
+    const rows = [], cols = [], squares = [];
     for (let r = 0; r < ROWS; r++) if (g[r].every(v => v !== null)) rows.push(r);
+    if (MODES[mode].columns)
+      for (let c = 0; c < COLS; c++) if (g.every(row => row[c] !== null)) cols.push(c);
     for (let t = 0; t < ROWS; t += SQ) for (let l = 0; l < COLS; l += SQ) {
       let full = true;
       for (let dr = 0; dr < SQ; dr++) for (let dc = 0; dc < SQ; dc++) if (g[t + dr][l + dc] === null) full = false;
       if (full) squares.push([t, l]);
     }
-    return { rows, squares, count: rows.length + squares.length };
+    return { rows, cols, squares, count: rows.length + cols.length + squares.length };
   }
   function clearKeys(f) {
     const s = new Set();
     f.rows.forEach(r => { for (let c = 0; c < COLS; c++) s.add(r * COLS + c); });
+    f.cols.forEach(c => { for (let r = 0; r < ROWS; r++) s.add(r * COLS + c); });
     f.squares.forEach(([t, l]) => { for (let dr = 0; dr < SQ; dr++) for (let dc = 0; dc < SQ; dc++) s.add((t + dr) * COLS + l + dc); });
     return s;
   }
@@ -373,8 +433,11 @@
     S.trayPop = S.tray.map((_, i) => now + i * 60);
   }
 
-  function newGame(restore) {
+  function newGame(restore, newMode) {
     gameId++;
+    if (newMode) mode = newMode;
+    ROWS = MODES[mode].rows; COLS = MODES[mode].cols;
+    best = loadBest(mode);
     const now = performance.now();
     S = {
       grid: emptyGrid(), falling: null, tray: [], trayPop: [0, 0, 0],
@@ -384,12 +447,13 @@
       coins: 0, coinHalves: 0, bombs: 0, rerolls: 0, extraSlot: false, slowTime: false,
       levelSeen: 1, levelBonus: 0, shopPending: false, shopOpen: false,
       aiming: false, aimCell: null, blast: null,
+      menu: false, dirs: [0], announce: null,
     };
     drag = null;
     touch = null;
     if (restore && restore.grid) {
-      S.grid = restore.grid.map((row, r) => row.map(v =>
-        v === null || v === undefined ? null : newBlock(typeof v === "number" ? v : v.c, r)));
+      S.grid = restore.grid.map((row, r) => row.map((v, c) =>
+        v === null || v === undefined ? null : newBlock(typeof v === "number" ? v : v.c, r, c, v.d || 0)));
       S.tray = restore.tray.map(t => t && makeShape(t.cells, t.color));
       S.trayPop = S.tray.map(() => 0);
       S.score = restore.score || 0; S.clears = restore.clears || 0; S.streak = restore.streak || 0;
@@ -398,51 +462,81 @@
       S.levelSeen = level();
     } else {
       freshTray(now);
-      seedRubble(3);
+      seedRubble(MODES[mode].rubble);
     }
-    hide(pauseOverlay); hide(overOverlay); hide(shopOverlay);
+    S.dirs = unlockedDirs();
+    zoom = zoomTarget();
+    $("howtoClear").textContent = MODES[mode].columns ? "Fill a row, column or 3×3 square to clear it" : "Fill a row or a 3×3 square to clear it";
+    $("howtoSteer").textContent = mode === "challenge" ? "Slide across its path to steer it, along it to speed up" : "Slide left, right or down to steer it";
+    hide(pauseOverlay); hide(overOverlay); hide(shopOverlay); hide(menuOverlay);
+    layout();
     updateHud();
+  }
+
+  /** Shows the difficulty picker over a fresh board. */
+  function openMenu() {
+    newGame();
+    S.menu = true;
+    ["casual", "challenge"].forEach(m => {
+      const b = loadBest(m);
+      $("best-" + m).textContent = b ? "Best " + b : "";
+      $("mode-" + m).classList.toggle("last", m === mode);
+    });
+    show(menuOverlay);
+    updateHud();
+    $("mode-" + mode).focus({ preventScroll: true });
+  }
+  function chooseMode(m) {
+    saveMode(m);
+    newGame(null, m);
   }
 
   function seedRubble(n) {
     for (let r = ROWS - n; r < ROWS; r++)
       for (let c = 0; c < COLS; c++)
-        if (Math.random() < 0.55) S.grid[r][c] = newBlock(Math.floor(Math.random() * COLORS.length), r);
+        if (Math.random() < 0.55) S.grid[r][c] = newBlock(Math.floor(Math.random() * COLORS.length), r, c);
     applyGravity();
     let f = findClears(S.grid);
     while (f.count) {
       if (f.rows.length) S.grid[f.rows[0]][Math.floor(Math.random() * COLS)] = null;
+      else if (f.cols.length) S.grid[Math.floor(Math.random() * ROWS)][f.cols[0]] = null;
       else { const [t, l] = f.squares[0]; S.grid[t + Math.floor(Math.random() * 3)][l + Math.floor(Math.random() * 3)] = null; }
       applyGravity();
       f = findClears(S.grid);
     }
     // Start settled, with no falling animation.
-    S.grid.forEach((row, r) => row.forEach(b => { if (b) { b.vy = r; b.v = 0; } }));
+    S.grid.forEach((row, r) => row.forEach((b, c) => { if (b) { b.vy = r; b.vx = c; b.v = 0; } }));
   }
 
-  // A settled block: color index, plus the row it is drawn at (vy) and its fall speed (v).
-  const newBlock = (c, r) => ({ c, vy: r, v: 0 });
-  const GRAVITY = 60; // rows per second squared
+  // A settled block: color index (c), where it is drawn (vy, vx), its fall speed (v),
+  // and the direction it falls in (d, an index into DIRS: the way its piece was travelling).
+  const newBlock = (c, r, col, d = 0) => ({ c, vy: r, vx: col, v: 0, d });
+  const GRAVITY = 60; // cells per second squared
 
-  /** Drops every block straight down its column. The falling piece counts as solid. Returns the longest drop. */
+  /** Slides every block the way it falls until it hits a wall or another block. The falling piece counts as solid. Returns the longest drop. */
   function applyGravity() {
     const fk = fallingKeys();
-    let maxDrop = 0;
-    for (let c = 0; c < COLS; c++) {
-      let landing = ROWS - 1;
-      for (let r = ROWS - 1; r >= 0; r--) {
-        if (fk.has(r * COLS + c)) { landing = r - 1; continue; }
-        const b = S.grid[r][c];
-        if (!b) continue;
-        if (landing !== r) {
-          S.grid[landing][c] = b;
+    const moves = new Map();
+    let moved = true;
+    while (moved) {
+      moved = false;
+      // Walk each direction from its far wall back, so stacks slide together.
+      for (let d = 0; d < DIRS.length; d++) {
+        const [dr, dc] = DIRS[d];
+        for (let i = 0; i < ROWS; i++) for (let j = 0; j < COLS; j++) {
+          const r = dr > 0 ? ROWS - 1 - i : i, c = dc > 0 ? COLS - 1 - j : j;
+          const b = S.grid[r][c];
+          if (!b || (b.d || 0) !== d) continue;
+          const nr = r + dr, nc = c + dc;
+          if (!inBounds(nr, nc) || S.grid[nr][nc] || fk.has(nr * COLS + nc)) continue;
+          S.grid[nr][nc] = b;
           S.grid[r][c] = null;
-          maxDrop = Math.max(maxDrop, landing - r);
+          moves.set(b, (moves.get(b) || 0) + 1);
+          moved = true;
         }
-        landing--;
       }
     }
-    return maxDrop;
+    return Math.max(0, ...moves.values());
   }
 
   const inBounds = (r, c) => r >= 0 && r < ROWS && c >= 0 && c < COLS;
@@ -460,20 +554,46 @@
   function tick(now) {
     const f = S.falling;
     if (!f) return spawn(now);
-    if (fits(f.shape.cells, f.r + 1, f.c)) { f.prevR = f.r; f.r++; f.moveT = now; }
-    else lock();
+    if (!advance(f)) lock();
+  }
+  /** Moves the drifting piece one step along its path. */
+  function advance(f) {
+    const [dr, dc] = DIRS[f.dir];
+    if (!fits(f.shape.cells, f.r + dr, f.c + dc)) return false;
+    moveFalling(f, f.r + dr, f.c + dc);
+    return true;
+  }
+  /** Where a new piece could enter from a side: every lane along that edge it fits in. */
+  function entrySpots(shape, d) {
+    const spots = [];
+    if (d === 0 || d === 3) {
+      const r = d === 0 ? 0 : ROWS - shape.h;
+      for (let c = 0; c <= COLS - shape.w; c++) if (fits(shape.cells, r, c)) spots.push([r, c]);
+    } else {
+      const c = d === 1 ? COLS - shape.w : 0;
+      for (let r = 0; r <= ROWS - shape.h; r++) if (fits(shape.cells, r, c)) spots.push([r, c]);
+    }
+    return spots;
   }
   function spawn(now) {
     const shape = randomShape(TETRO_F);
-    const cols = [];
-    for (let c = 0; c <= COLS - shape.w; c++) if (fits(shape.cells, 0, c)) cols.push(c);
-    if (!cols.length) return endGame();
-    const c = pick(cols);
-    S.falling = { id: ++pieceSeq, shape, r: 0, c, prevR: -shape.h, moveT: now, prevC: c, cMoveT: now };
+    // Pick a random open side. The board is full only when no side has room.
+    const sides = S.dirs.slice().sort(() => Math.random() - 0.5);
+    for (const d of sides) {
+      const spots = entrySpots(shape, d);
+      if (!spots.length) continue;
+      const [r, c] = pick(spots);
+      // Start just outside the board so the piece slides in.
+      const prevR = d === 0 ? -shape.h : d === 3 ? ROWS : r;
+      const prevC = d === 1 ? COLS : d === 2 ? -shape.w : c;
+      S.falling = { id: ++pieceSeq, shape, dir: d, r, c, prevR, moveT: now, prevC, cMoveT: now };
+      return;
+    }
+    endGame();
   }
   function lock() {
     const f = S.falling;
-    f.shape.cells.forEach(([r, c]) => { S.grid[r + f.r][c + f.c] = newBlock(f.shape.color, r + f.r); });
+    f.shape.cells.forEach(([r, c]) => { S.grid[r + f.r][c + f.c] = newBlock(f.shape.color, r + f.r, c + f.c, f.dir); });
     S.falling = null;
     resolve(false);
   }
@@ -484,11 +604,11 @@
     finalBest.textContent = S.score > 0 && S.score >= best ? "New best!" : "Best " + best;
     show(overOverlay);
   }
-  function updateBest() { if (S.score > best) { best = S.score; saveBest(best); } }
+  function updateBest() { if (S.score > best) { best = S.score; saveBest(mode, best); } }
 
   function place(i, [r0, c0]) {
     const shape = S.tray[i];
-    shape.cells.forEach(([r, c]) => { S.grid[r + r0][c + c0] = newBlock(shape.color, r + r0); });
+    shape.cells.forEach(([r, c]) => { S.grid[r + r0][c + c0] = newBlock(shape.color, r + r0, c + c0); });
     S.tray[i] = null;
     S.score += shape.cells.length;
     // An expired extra slot goes away once its shape is used.
@@ -528,6 +648,7 @@
 
     const parts = [];
     if (f.rows.length) parts.push(f.rows.length === 1 ? "Line" : f.rows.length + " Lines");
+    if (f.cols.length) parts.push(f.cols.length === 1 ? "Column" : f.cols.length + " Columns");
     if (f.squares.length) parts.push(f.squares.length === 1 ? "Square" : f.squares.length + " Squares");
     let title = parts.join(" + ");
     if (chain > 1) title = "Cascade! " + title;
@@ -637,24 +758,33 @@
   const cv = document.getElementById("board");
   const ctx = cv.getContext("2d");
   const L = {};
+  // Margin around the board, in cells. Challenge zooms out once pieces come from more than one side,
+  // so you can see them slide in.
+  let zoom = 0;
+  const ZOOM_OUT = 1.4;
+  const zoomTarget = () => (S && S.dirs.length > 1 ? ZOOM_OUT : 0);
   function layout() {
     const w = stage.clientWidth, h = stage.clientHeight, dpr = window.devicePixelRatio || 1;
     cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const cell = Math.max(10, Math.floor(Math.min(w / COLS, h / (ROWS + 4.1))));
+    L.w = w; L.h = h;
+    geometry();
+  }
+  function geometry() {
+    const { w, h } = L, m = zoom;
+    const cell = Math.max(10, Math.floor(Math.min(w / (COLS + 2 * m), h / (ROWS + 2 * m + 4.1))));
     L.cell = cell;
+    L.m = m * cell;
     L.bw = cell * COLS; L.bh = cell * ROWS;
     L.th = cell * 3.6;
-    const total = L.bh + cell * 0.5 + L.th;
+    const total = L.bh + 2 * L.m + cell * 0.5 + L.th;
     L.bx = Math.round((w - L.bw) / 2);
-    L.by = Math.max(0, Math.round((h - total) / 2));
+    L.by = Math.max(0, Math.round((h - total) / 2)) + Math.round(L.m);
     L.tw = Math.min(w, L.bw + cell * 2);
     L.tx = (w - L.tw) / 2;
-    L.ty = L.by + L.bh + cell * 0.5;
-    L.w = w; L.h = h;
+    L.ty = L.by + L.bh + L.m + cell * 0.5;
   }
   new ResizeObserver(layout).observe(stage);
-  layout();
 
   // ---------- drawing ----------
   const hexToRgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
@@ -726,11 +856,12 @@
     // landing guide for the falling piece
     const f = S.falling;
     if (f) {
-      let lr = f.r;
-      while (fits(f.shape.cells, lr + 1, f.c)) lr++;
+      const [dr, dc] = DIRS[f.dir];
+      let lr = f.r, lc = f.c;
+      while (fits(f.shape.cells, lr + dr, lc + dc)) { lr += dr; lc += dc; }
       ctx.strokeStyle = rgba(COLORS[f.shape.color], 0.45);
       ctx.lineWidth = 1.5;
-      f.shape.cells.forEach(([r, c]) => { rr(bx + (c + f.c) * s + s * 0.09, by + (r + lr) * s + s * 0.09, s * 0.82, s * 0.82, s * 0.2); ctx.stroke(); });
+      f.shape.cells.forEach(([r, c]) => { rr(bx + (c + lc) * s + s * 0.09, by + (r + lr) * s + s * 0.09, s * 0.82, s * 0.82, s * 0.2); ctx.stroke(); });
     }
 
     // preview of what would clear
@@ -749,7 +880,7 @@
       if (!b) continue;
       const k = r * COLS + c;
       const clearing = S.clearing.has(k);
-      block(bx + c * s, by + b.vy * s, s, COLORS[b.c], { hi: clearing || preview.has(k), scale: clearing ? 1.1 : 1 });
+      block(bx + b.vx * s, by + b.vy * s, s, COLORS[b.c], { hi: clearing || preview.has(k), scale: clearing ? 1.1 : 1 });
     }
 
     // soft bursts where blocks cleared
@@ -792,15 +923,21 @@
       }
     }
 
-    // the drifting piece
-    if (f) {
-      const t = easeOut((now - f.moveT) / 240);
-      const yr = f.prevR + (f.r - f.prevR) * t;
-      shapeAt(f.shape, bx + fallingX(f, now) * s, by + yr * s, s, { glow: true });
-    }
+    // the drifting piece (when zoomed out, it's drawn after the clip so it can slide in from the margin)
+    if (f && zoom === 0) shapeAt(f.shape, bx + fallingX(f, now) * s, by + fallingY(f, now) * s, s, { glow: true });
     ctx.restore();
     ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 1;
     rr(bx + 0.5, by + 0.5, bw - 1, bh - 1, 16); ctx.stroke();
+
+    if (zoom > 0) {
+      drawEntrySides();
+      if (f) {
+        ctx.save();
+        ctx.beginPath(); ctx.rect(bx - L.m, by - L.m, bw + 2 * L.m, bh + 2 * L.m); ctx.clip();
+        shapeAt(f.shape, bx + fallingX(f, now) * s, by + fallingY(f, now) * s, s, { glow: true });
+        ctx.restore();
+      }
+    }
 
     // tray
     ctx.fillStyle = "rgba(255,255,255,0.06)";
@@ -839,6 +976,24 @@
       ctx.restore();
     }
 
+    // new side unlocked
+    if (S.announce) {
+      const age = now - S.announce.t0;
+      if (age > 2600) S.announce = null;
+      else {
+        const a = Math.min(1, age / 300) * (age > 2100 ? 1 - (age - 2100) / 500 : 1);
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.font = `600 ${Math.round(s * 0.55)}px Fredoka, Nunito, sans-serif`;
+        const tw = ctx.measureText(S.announce.text).width;
+        ctx.fillStyle = "rgba(24, 27, 60, 0.85)";
+        rr(bx + bw / 2 - tw / 2 - s * 0.5, by + bh / 2 - s * 0.6, tw + s, s * 1.2, s * 0.6); ctx.fill();
+        ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#A8E6CF";
+        ctx.fillText(S.announce.text, bx + bw / 2, by + bh / 2);
+        ctx.restore();
+      }
+    }
+
     // score popup
     if (S.popup) {
       const age = now - S.popup.t0;
@@ -860,6 +1015,35 @@
     }
   }
 
+  /** Soft arrows in the margin on each side pieces can come from. The current piece's side glows. */
+  function drawEntrySides() {
+    const { cell: s, bx, by, bw, bh } = L, m = L.m;
+    const cur = S.falling ? S.falling.dir : -1;
+    const alpha = Math.min(1, zoom / ZOOM_OUT);
+    S.dirs.forEach(d => {
+      ctx.save();
+      ctx.globalAlpha = alpha * (d === cur ? 0.85 : 0.3);
+      ctx.fillStyle = "#F4F1FF";
+      const [dr, dc] = DIRS[d];
+      const sideways = dc !== 0;
+      const n = Math.floor((sideways ? ROWS : COLS) / 3);
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n;
+        // Middle of the margin strip on that side; the arrow points inward along (dr, dc).
+        const x = sideways ? (dc < 0 ? bx + bw + m / 2 : bx - m / 2) : bx + t * bw;
+        const y = sideways ? by + t * bh : (dr > 0 ? by - m / 2 : by + bh + m / 2);
+        const k = s * 0.22;
+        ctx.beginPath();
+        ctx.moveTo(x + dc * k, y + dr * k);
+        ctx.lineTo(x - dc * k + dr * k, y - dr * k + dc * k);
+        ctx.lineTo(x - dc * k - dr * k, y - dr * k - dc * k);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    });
+  }
+
   let lastFrame = performance.now();
   function frame(now) {
     // Blocks dropping after a clear accelerate until they land.
@@ -867,11 +1051,19 @@
     lastFrame = now;
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
       const b = S.grid[r][c];
-      if (!b || b.vy === r) continue;
-      if (b.vy > r) { b.vy = r; b.v = 0; continue; }
+      if (!b) continue;
+      const dy = r - b.vy, dx = c - b.vx, dist = Math.hypot(dx, dy);
+      if (dist === 0) continue;
       b.v += GRAVITY * dt;
-      b.vy = Math.min(r, b.vy + b.v * dt);
-      if (b.vy === r) b.v = 0;
+      const step = Math.min(dist, b.v * dt);
+      if (step >= dist) { b.vy = r; b.vx = c; b.v = 0; }
+      else { b.vy += dy / dist * step; b.vx += dx / dist * step; }
+    }
+    // Ease the zoom toward its target.
+    const zt = zoomTarget();
+    if (zoom !== zt) {
+      zoom = zt > zoom ? Math.min(zt, zoom + dt * 1.6) : Math.max(zt, zoom - dt * 1.6);
+      geometry();
     }
     if (!frozen() && !S.resolving && now - S.lastStep >= interval()) {
       S.lastStep = now;
@@ -890,7 +1082,7 @@
   const cellAt = (x, y) => [Math.floor((y - L.by) / L.cell), Math.floor((x - L.bx) / L.cell)];
   const onBoard = (x, y) => x >= L.bx && x < L.bx + L.bw && y >= L.by && y < L.by + L.bh;
   cv.addEventListener("pointerdown", e => {
-    if (S.over || S.paused || S.shopOpen || touch) return;
+    if (S.over || S.paused || S.shopOpen || S.menu || touch) return;
     const [x, y] = pos(e);
     if (S.aiming) {
       // While aiming, the board picks the blast spot. Anything else is ignored.
@@ -908,7 +1100,8 @@
       touch = { kind: "tray", i, x0: x, y0: y, moved: false };
     } else if (y < L.ty) {
       const f = S.falling;
-      touch = { kind: "board", x0: x, y0: y, moved: false, pieceId: f ? f.id : null, startC: f ? f.c : 0, lastY: y };
+      touch = { kind: "board", x0: x, y0: y, moved: false, pieceId: f ? f.id : null,
+                startP: f ? laneOf(f) : 0, s0: f ? across(f, x, y) : 0, lastP: f ? along(f, x, y) : 0 };
     } else return;
     cv.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -927,12 +1120,14 @@
     }
     const f = S.falling;
     if (!f) return;
-    if (touch.pieceId !== f.id) { touch.pieceId = f.id; touch.startC = f.c; touch.x0 = x; touch.lastY = y; }
-    shiftFalling(touch.startC + Math.round((x - touch.x0) / L.cell));
-    // Dragging down pulls the piece down one row per cell of finger travel.
-    if (y < touch.lastY) touch.lastY = y;
-    while (y - touch.lastY >= L.cell) {
-      touch.lastY += L.cell;
+    if (touch.pieceId !== f.id) { touch.pieceId = f.id; touch.startP = laneOf(f); touch.s0 = across(f, x, y); touch.lastP = along(f, x, y); }
+    // Sliding across the piece's path steers it.
+    shiftFalling(touch.startP + Math.round((across(f, x, y) - touch.s0) / L.cell));
+    // Sliding along its path pulls it forward one cell per cell of finger travel.
+    const p = along(f, x, y);
+    if (p < touch.lastP) touch.lastP = p;
+    while (p - touch.lastP >= L.cell) {
+      touch.lastP += L.cell;
       if (!softDrop()) break;
     }
   });
@@ -966,52 +1161,60 @@
 
   // ---------- moving and rotating ----------
   const rotateCW = sh => makeShape(norm(sh.cells.map(([r, c]) => [c, sh.h - 1 - r])), sh.color);
-  const fallingX = (f, now) => f.prevC + (f.c - f.prevC) * easeOut((now - f.cMoveT) / 110);
+  // The piece glides 240ms per step along its path and 110ms per step when steered.
+  const vertical = f => DIRS[f.dir][0] !== 0;
+  const fallingY = (f, now) => f.prevR + (f.r - f.prevR) * easeOut((now - f.moveT) / (vertical(f) ? 240 : 110));
+  const fallingX = (f, now) => f.prevC + (f.c - f.prevC) * easeOut((now - f.cMoveT) / (vertical(f) ? 110 : 240));
+  // Steering lane (column for a piece moving up or down, row for one moving sideways),
+  // and finger position across and along the path.
+  const laneOf = f => vertical(f) ? f.c : f.r;
+  const across = (f, x, y) => vertical(f) ? x : y;
+  const along = (f, x, y) => vertical(f) ? y * DIRS[f.dir][0] : x * DIRS[f.dir][1];
 
-  function setFallingColumn(f, c) {
+  function moveFalling(f, r, c) {
     const now = performance.now();
-    f.prevC = fallingX(f, now);
-    f.c = c;
-    f.cMoveT = now;
+    if (r !== f.r) { f.prevR = fallingY(f, now); f.r = r; f.moveT = now; }
+    if (c !== f.c) { f.prevC = fallingX(f, now); f.c = c; f.cMoveT = now; }
   }
 
-  /** Slides the falling piece toward a column, one step at a time, stopping at blocks and walls. */
+  /** Slides the drifting piece toward a lane, one step at a time, stopping at blocks and walls. */
   function shiftFalling(target) {
     const f = S.falling;
     if (!f || frozen()) return;
-    let c = f.c;
-    while (c !== target) {
-      const step = Math.sign(target - c);
-      if (!fits(f.shape.cells, f.r, c + step)) break;
-      c += step;
+    const v = vertical(f);
+    let p = laneOf(f);
+    while (p !== target) {
+      const step = Math.sign(target - p);
+      if (!(v ? fits(f.shape.cells, f.r, p + step) : fits(f.shape.cells, p + step, f.c))) break;
+      p += step;
     }
-    if (c !== f.c) setFallingColumn(f, c);
+    if (v) moveFalling(f, f.r, p); else moveFalling(f, p, f.c);
   }
 
-  /** Moves the falling piece down one row if it can. */
+  /** Moves the drifting piece one step forward if it can. */
   function softDrop() {
     const f = S.falling;
-    if (!f || frozen() || !fits(f.shape.cells, f.r + 1, f.c)) return false;
-    const now = performance.now();
-    f.prevR = f.r;
-    f.r++;
-    f.moveT = now;
-    S.lastStep = now;
+    if (!f || frozen() || !advance(f)) return false;
+    S.lastStep = performance.now();
     return true;
   }
 
-  /** Rotates the falling piece clockwise, nudging it sideways if it would hit something. */
+  /** Rotates the drifting piece clockwise, nudging it across its path, then along it, if it would hit something. */
   function rotateFalling() {
     const f = S.falling;
     if (!f || frozen()) return;
     const rot = rotateCW(f.shape);
     const baseR = f.r + Math.trunc((f.shape.h - rot.h) / 2);
     const baseC = f.c + Math.trunc((f.shape.w - rot.w) / 2);
-    for (const [dr, dc] of [[0, 0], [0, -1], [0, 1], [0, -2], [0, 2], [1, 0], [-1, 0]]) {
-      if (fits(rot.cells, baseR + dr, baseC + dc)) {
+    const [dr, dc] = DIRS[f.dir];
+    const qr = Math.abs(dc), qc = Math.abs(dr); // one step across the path
+    for (const [p, t] of [[0, 0], [-1, 0], [1, 0], [-2, 0], [2, 0], [0, 1], [0, -1]]) {
+      const r = baseR + p * qr + t * dr, c = baseC + p * qc + t * dc;
+      if (fits(rot.cells, r, c)) {
         f.shape = rot;
-        f.r = f.prevR = baseR + dr;
-        setFallingColumn(f, baseC + dc);
+        // Snap along the path, glide across it.
+        if (vertical(f)) f.r = f.prevR = r; else f.c = f.prevC = c;
+        moveFalling(f, r, c);
         return;
       }
     }
@@ -1027,7 +1230,7 @@
   const $ = id => document.getElementById(id);
   const scoreEl = $("score"), levelEl = $("level"), bestEl = $("best");
   const coinsEl = $("coins"), bombBtn = $("bombBtn"), rerollBtn = $("rerollBtn");
-  const pauseOverlay = $("pauseOverlay"), overOverlay = $("overOverlay"), shopOverlay = $("shopOverlay");
+  const pauseOverlay = $("pauseOverlay"), overOverlay = $("overOverlay"), shopOverlay = $("shopOverlay"), menuOverlay = $("menuOverlay");
   const finalScore = $("finalScore"), finalBest = $("finalBest");
   const show = el => { el.hidden = false; }, hide = el => { el.hidden = true; };
   function updateHud() {
@@ -1037,14 +1240,14 @@
     coinsEl.textContent = S.coins;
     $("bombCount").textContent = S.bombs;
     $("rerollCount").textContent = S.rerolls;
-    const busy = S.over || S.paused || S.shopOpen;
+    const busy = S.over || S.paused || S.shopOpen || S.menu;
     bombBtn.disabled = busy || (S.bombs <= 0 && !S.aiming);
     bombBtn.classList.toggle("active", S.aiming);
     bombBtn.setAttribute("aria-label", S.aiming ? "Cancel bomb" : "Use bomb");
     rerollBtn.disabled = busy || S.aiming || S.rerolls <= 0;
   }
   function setPaused(p) {
-    if (S.over || S.shopOpen) return;
+    if (S.over || S.shopOpen || S.menu) return;
     if (p && S.aiming) setAiming(false);
     S.paused = p;
     drag = null; touch = null;
@@ -1094,6 +1297,10 @@
     $("shopTitle").textContent = "Level " + level();
     $("shopBonus").textContent = S.levelBonus ? `+${S.levelBonus} level bonus` : "";
     S.levelBonus = 0;
+    const news = unlockedDirs().filter(d => !S.dirs.includes(d));
+    const newsEl = $("shopNews");
+    newsEl.hidden = !news.length;
+    if (news.length) newsEl.textContent = "Pieces will also come from " + UNLOCKS.find(u => u.dir === news[0]).side + "!";
     renderShop();
     show(shopOverlay);
     updateHud();
@@ -1103,6 +1310,11 @@
   function closeShop() {
     S.shopOpen = false;
     hide(shopOverlay);
+    // A new side opens once the player has seen the warning in the shop.
+    const before = S.dirs;
+    S.dirs = unlockedDirs();
+    const added = S.dirs.find(d => !before.includes(d));
+    if (added !== undefined) S.announce = { text: "Now from " + UNLOCKS.find(u => u.dir === added).side + "!", t0: performance.now() };
     S.lastStep = performance.now();
     updateHud();
   }
@@ -1146,31 +1358,47 @@
   rerollBtn.addEventListener("click", reroll);
   $("pauseBtn").addEventListener("click", () => setPaused(!S.paused));
   $("resumeBtn").addEventListener("click", () => setPaused(false));
-  $("restartBtn").addEventListener("click", () => newGame());
-  $("againBtn").addEventListener("click", () => newGame());
+  $("restartBtn").addEventListener("click", openMenu);
+  $("againBtn").addEventListener("click", openMenu);
+  $("mode-casual").addEventListener("click", () => chooseMode("casual"));
+  $("mode-challenge").addEventListener("click", () => chooseMode("challenge"));
   document.addEventListener("visibilitychange", () => { if (document.hidden) setPaused(true); });
   document.addEventListener("keydown", e => {
-    if (S.shopOpen) return;
+    if (S.shopOpen || S.menu) return;
     if (e.key === "Escape" && S.aiming) return setAiming(false);
     if (e.key === "p" || e.key === "Escape") return setPaused(!S.paused);
     if (e.key === "b") return setAiming(!S.aiming);
-    if (!S.falling) return;
-    if (e.key === "ArrowLeft") shiftFalling(S.falling.c - 1);
-    else if (e.key === "ArrowRight") shiftFalling(S.falling.c + 1);
-    else if (e.key === "ArrowDown") { e.preventDefault(); softDrop(); }
-    else if (e.key === "ArrowUp" || e.key === " ") { e.preventDefault(); rotateFalling(); }
+    const f = S.falling;
+    if (!f) return;
+    if (e.key === " ") { e.preventDefault(); return rotateFalling(); }
+    const v = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key];
+    if (!v) return;
+    e.preventDefault();
+    // Arrow along the path speeds up, against it rotates, across it steers.
+    const [dr, dc] = DIRS[f.dir];
+    if (v[0] === dr && v[1] === dc) softDrop();
+    else if (v[0] === -dr && v[1] === -dc) rotateFalling();
+    else shiftFalling(laneOf(f) + (vertical(f) ? v[1] : v[0]));
   });
 
   // Keep the game going across page updates.
   window.claude?.hot?.snapshot?.(() => ({
     grid: S.grid, tray: S.tray.map(t => t && { cells: t.cells, color: t.color }),
-    score: S.score, clears: S.clears, streak: S.streak,
+    mode, score: S.score, clears: S.clears, streak: S.streak,
     coins: S.coins, coinHalves: S.coinHalves, bombs: S.bombs, rerolls: S.rerolls, extraSlot: S.extraSlot, slowTime: S.slowTime,
   }));
   const start = data => {
-    newGame(data && data.grid ? data : null);
-    // Test hook: #shop-preview opens the shop with some coins.
-    if (location.hash === "#shop-preview") { S.coins = 40; S.levelBonus = 5; openShop(); }
+    if (data && data.grid) newGame(data, MODES[data.mode] ? data.mode : "casual");
+    else openMenu();
+    // Test hooks: #shop-preview opens the shop with some coins; #challenge-N starts Challenge at level N.
+    if (location.hash === "#shop-preview") { chooseMode(mode); S.coins = 40; S.levelBonus = 5; openShop(); }
+    const lv = location.hash.match(/^#challenge-(\d+)$/);
+    if (lv) {
+      chooseMode("challenge");
+      S.clears = (parseInt(lv[1], 10) - 1) * CLEARS_PER_LEVEL;
+      S.levelSeen = level(); S.dirs = unlockedDirs(); zoom = zoomTarget(); geometry(); updateHud();
+      window.__blockDrift = { state: () => S, gravity: applyGravity, findClears, openShop };
+    }
     requestAnimationFrame(frame);
   };
   window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
