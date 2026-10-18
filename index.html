@@ -344,7 +344,8 @@
   // ---------- state ----------
   let S, drag = null, gameId = 0, pieceSeq = 0, best = loadBest();
   const emptyGrid = () => Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-  const level = () => Math.floor(S.clears / 10) + 1;
+  const CLEARS_PER_LEVEL = 12;
+  const level = () => Math.floor(S.clears / CLEARS_PER_LEVEL) + 1;
   const interval = () => Math.max(300, 1300 - (level() - 1) * 120) * (S.slowTime ? 1.6 : 1);
   // True while the board should hold still: paused, game over, shopping, or aiming a bomb.
   const frozen = () => S.over || S.paused || S.shopOpen || S.aiming;
@@ -380,7 +381,7 @@
       score: 0, clears: 0, streak: 0, over: false, paused: false,
       clearing: new Set(), resolving: false, popup: null, fades: [], lastStep: now,
       // Shop and power-ups
-      coins: 0, bombs: 0, rerolls: 0, extraSlot: false, slowTime: false,
+      coins: 0, coinHalves: 0, bombs: 0, rerolls: 0, extraSlot: false, slowTime: false,
       levelSeen: 1, levelBonus: 0, shopPending: false, shopOpen: false,
       aiming: false, aimCell: null, blast: null,
     };
@@ -392,7 +393,7 @@
       S.tray = restore.tray.map(t => t && makeShape(t.cells, t.color));
       S.trayPop = S.tray.map(() => 0);
       S.score = restore.score || 0; S.clears = restore.clears || 0; S.streak = restore.streak || 0;
-      S.coins = restore.coins || 0; S.bombs = restore.bombs || 0; S.rerolls = restore.rerolls || 0;
+      S.coins = restore.coins || 0; S.coinHalves = restore.coinHalves || 0; S.bombs = restore.bombs || 0; S.rerolls = restore.rerolls || 0;
       S.extraSlot = !!restore.extraSlot; S.slowTime = !!restore.slowTime;
       S.levelSeen = level();
     } else {
@@ -512,13 +513,16 @@
     const points = (f.count * 18 + (f.count - 1) * 18) * mult;
     S.score += points;
     S.clears += f.count;
-    S.coins += 2 * f.count * chain;
+    // A lone clear earns half a coin; every part of a combo or chain earns a full coin.
+    S.coinHalves += (f.count === 1 && chain === 1) ? 1 : 2 * f.count;
+    S.coins += Math.floor(S.coinHalves / 2);
+    S.coinHalves %= 2;
     // Reaching a new level opens the shop once the board settles.
     if (level() > S.levelSeen) {
       const gained = level() - S.levelSeen;
       S.levelSeen = level();
-      S.levelBonus += 5 * gained;
-      S.coins += 5 * gained;
+      S.levelBonus += 3 * gained;
+      S.coins += 3 * gained;
       S.shopPending = true;
     }
 
@@ -1161,7 +1165,7 @@
   window.claude?.hot?.snapshot?.(() => ({
     grid: S.grid, tray: S.tray.map(t => t && { cells: t.cells, color: t.color }),
     score: S.score, clears: S.clears, streak: S.streak,
-    coins: S.coins, bombs: S.bombs, rerolls: S.rerolls, extraSlot: S.extraSlot, slowTime: S.slowTime,
+    coins: S.coins, coinHalves: S.coinHalves, bombs: S.bombs, rerolls: S.rerolls, extraSlot: S.extraSlot, slowTime: S.slowTime,
   }));
   const start = data => {
     newGame(data && data.grid ? data : null);
