@@ -309,7 +309,7 @@
       </button>
       <button class="mode" id="mode-challenge">
         <span class="mname">Challenge</span>
-        <span class="mdesc">Compact 9×9 board where columns clear too. From level 10, blocks drift in from the right, then the left, then below.</span>
+        <span class="mdesc">Compact 9×9 board where columns clear too. Every 10 levels, blocks start drifting in from a new side: the right, then the left, then below.</span>
         <span class="mbest" id="best-challenge"></span>
       </button>
     </div>
@@ -329,7 +329,7 @@
   // Travel directions as [row step, column step]: from the top, from the right, from the left, from below.
   const DIRS = [[1, 0], [0, -1], [0, 1], [-1, 0]];
   // Challenge unlocks a new side at these levels.
-  const UNLOCKS = [{ level: 10, dir: 1, side: "the right" }, { level: 30, dir: 2, side: "the left" }, { level: 40, dir: 3, side: "below" }];
+  const UNLOCKS = [{ level: 10, dir: 1, side: "the right" }, { level: 20, dir: 2, side: "the left" }, { level: 30, dir: 3, side: "below" }];
   const COLORS = ["#FF9AA2", "#FFC3A0", "#F9E79F", "#A8E6CF", "#8FD3F4", "#B5A8F0", "#F5B3E0"];
   const TRAY = ["X", "XX", "XXX", "XXXX", "XXXXX", "XX/XX", "X./XX", "X../XXX", "..X/XXX", "XXX/.X.",
                 ".XX/XX.", "XX./.XX", "X../X../XXX", ".X./XXX/.X.", "XXX/XXX"];
