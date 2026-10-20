@@ -99,14 +99,16 @@
   #stage { flex: 1; min-height: 0; position: relative; }
   #board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
 
-  /* Coins and power-ups under the tray */
+  /* Coins and power-ups, placed just under the tray by geometry() */
   .powerbar {
+    position: absolute; left: 0; right: 0; top: 0;
+    pointer-events: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding-top: 10px;
   }
+  .powerbar > * { pointer-events: auto; }
   .coins {
     display: flex; align-items: center; gap: 7px;
     font-family: var(--font-display); font-weight: 600; font-size: 1.3rem;
@@ -243,8 +245,8 @@
   </button>
 </header>
 
-<div id="stage" class="column"><canvas id="board" aria-label="Game board"></canvas></div>
-<div class="powerbar column">
+<div id="stage" class="column"><canvas id="board" aria-label="Game board"></canvas>
+<div class="powerbar" id="powerbar">
   <div class="coins" aria-label="Coins">
     <svg class="coin-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#F9E79F"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="#E2C25F" stroke-width="2"/></svg>
     <span id="coins">0</span>
@@ -259,6 +261,7 @@
       <span id="rerollCount">0</span>
     </button>
   </div>
+</div>
 </div>
 
 <div class="overlay" id="pauseOverlay" hidden>
@@ -762,7 +765,7 @@
   }
 
   // ---------- layout ----------
-  const stage = document.getElementById("stage");
+  const stage = document.getElementById("stage"), powerbar = document.getElementById("powerbar");
   const cv = document.getElementById("board");
   const ctx = cv.getContext("2d");
   const L = {};
@@ -776,10 +779,11 @@
     cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     L.w = w; L.h = h;
+    L.pb = powerbar.offsetHeight + 10;
     geometry();
   }
   function geometry() {
-    const { w, h } = L, m = zoom;
+    const { w } = L, h = L.h - L.pb, m = zoom;
     // Boards wider than 9 cells get smaller cells; the tray stays sized as if the board were 9 wide.
     const trayScale = Math.max(1, COLS / 9);
     const cell = Math.max(10, Math.floor(Math.min(w / (COLS + 2 * m), h / (ROWS + 2 * m + 4.1 * trayScale))));
@@ -794,6 +798,8 @@
     L.tw = Math.min(w, L.bw + cell * 2);
     L.tx = (w - L.tw) / 2;
     L.ty = L.by + L.bh + L.m + cell * 0.5;
+    const top = Math.round(L.ty + L.th + 10) + "px";
+    if (powerbar.style.top !== top) powerbar.style.top = top;
   }
   new ResizeObserver(layout).observe(stage);
 
