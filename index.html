@@ -309,8 +309,13 @@
       </button>
       <button class="mode" id="mode-challenge">
         <span class="mname">Challenge</span>
-        <span class="mdesc">Compact 9×9 board where columns clear too. Every 10 levels, blocks start drifting in from a new side: the right, then the left, then below.</span>
+        <span class="mdesc">Compact 9×9 board where columns clear too. Blocks drift down from above.</span>
         <span class="mbest" id="best-challenge"></span>
+      </button>
+      <button class="mode" id="mode-hard">
+        <span class="mname">Hard</span>
+        <span class="mdesc">Wide 15×15 board where columns clear too. From level 10 blocks also drift in from the right, and from level 20 the left.</span>
+        <span class="mbest" id="best-hard"></span>
       </button>
     </div>
   </div>
@@ -319,17 +324,20 @@
 <script>
 (() => {
   // Casual: the original tall board, pieces drift down. Challenge: a 9x9 board where columns
-  // clear too, and from level 10 pieces also drift in from the sides and below.
+  // clear too. Hard: a 15x15 board where columns clear, and pieces also come from the right
+  // at level 10 and the left at level 20.
+  // unlocks: the level each extra side opens, and its travel direction (an index into DIRS).
   const MODES = {
-    casual: { rows: 15, cols: 9, columns: false, rubble: 3 },
-    challenge: { rows: 9, cols: 9, columns: true, rubble: 2 },
+    casual: { rows: 15, cols: 9, columns: false, rubble: 3, unlocks: [] },
+    challenge: { rows: 9, cols: 9, columns: true, rubble: 2, unlocks: [] },
+    hard: { rows: 15, cols: 15, columns: true, rubble: 3, unlocks: [{ level: 10, dir: 1 }, { level: 20, dir: 2 }] },
   };
   let ROWS = 15, COLS = 9;
   const SQ = 3;
   // Travel directions as [row step, column step]: from the top, from the right, from the left, from below.
   const DIRS = [[1, 0], [0, -1], [0, 1], [-1, 0]];
-  // Challenge unlocks a new side at these levels.
-  const UNLOCKS = [{ level: 10, dir: 1, side: "the right" }, { level: 20, dir: 2, side: "the left" }, { level: 30, dir: 3, side: "below" }];
+  // Where pieces travelling in each direction come from.
+  const SIDES = ["above", "the right", "the left", "below"];
   const COLORS = ["#FF9AA2", "#FFC3A0", "#F9E79F", "#A8E6CF", "#8FD3F4", "#B5A8F0", "#F5B3E0"];
   const TRAY = ["X", "XX", "XXX", "XXXX", "XXXXX", "XX/XX", "X./XX", "X../XXX", "..X/XXX", "XXX/.X.",
                 ".XX/XX.", "XX./.XX", "X../X../XXX", ".X./XXX/.X.", "XXX/XXX"];
@@ -405,7 +413,7 @@
   // True while the board should hold still: paused, game over, shopping, or aiming a bomb.
   const frozen = () => S.over || S.paused || S.shopOpen || S.aiming || S.menu;
   /** Sides pieces can come from at the current level. */
-  const unlockedDirs = () => mode === "challenge" ? [0, ...UNLOCKS.filter(u => level() >= u.level).map(u => u.dir)] : [0];
+  const unlockedDirs = () => [0, ...MODES[mode].unlocks.filter(u => level() >= u.level).map(u => u.dir)];
 
   function findClears(g) {
     const rows = [], cols = [], squares = [];
@@ -467,7 +475,7 @@
     S.dirs = unlockedDirs();
     zoom = zoomTarget();
     $("howtoClear").textContent = MODES[mode].columns ? "Fill a row, column or 3×3 square to clear it" : "Fill a row or a 3×3 square to clear it";
-    $("howtoSteer").textContent = mode === "challenge" ? "Slide across its path to steer it, along it to speed up" : "Slide left, right or down to steer it";
+    $("howtoSteer").textContent = MODES[mode].unlocks.length ? "Slide across its path to steer it, along it to speed up" : "Slide left, right or down to steer it";
     hide(pauseOverlay); hide(overOverlay); hide(shopOverlay); hide(menuOverlay);
     layout();
     updateHud();
@@ -477,7 +485,7 @@
   function openMenu() {
     newGame();
     S.menu = true;
-    ["casual", "challenge"].forEach(m => {
+    Object.keys(MODES).forEach(m => {
       const b = loadBest(m);
       $("best-" + m).textContent = b ? "Best " + b : "";
       $("mode-" + m).classList.toggle("last", m === mode);
@@ -772,11 +780,14 @@
   }
   function geometry() {
     const { w, h } = L, m = zoom;
-    const cell = Math.max(10, Math.floor(Math.min(w / (COLS + 2 * m), h / (ROWS + 2 * m + 4.1))));
+    // Boards wider than 9 cells get smaller cells; the tray stays sized as if the board were 9 wide.
+    const trayScale = Math.max(1, COLS / 9);
+    const cell = Math.max(10, Math.floor(Math.min(w / (COLS + 2 * m), h / (ROWS + 2 * m + 4.1 * trayScale))));
     L.cell = cell;
+    L.tc = cell * trayScale;
     L.m = m * cell;
     L.bw = cell * COLS; L.bh = cell * ROWS;
-    L.th = cell * 3.6;
+    L.th = L.tc * 3.6;
     const total = L.bh + 2 * L.m + cell * 0.5 + L.th;
     L.bx = Math.round((w - L.bw) / 2);
     L.by = Math.max(0, Math.round((h - total) / 2)) + Math.round(L.m);
@@ -943,7 +954,7 @@
     ctx.fillStyle = "rgba(255,255,255,0.06)";
     rr(L.tx, L.ty, L.tw, L.th, 20); ctx.fill();
     const slots = Math.max(3, S.tray.length);
-    const slotW = L.tw / slots, ts = Math.min(s * 0.62, slotW / 5.5, L.th / 5.5);
+    const slotW = L.tw / slots, ts = Math.min(L.tc * 0.62, slotW / 5.5, L.th / 5.5);
     S.tray.forEach((sh, i) => {
       if (!sh || (drag && drag.i === i)) return;
       const pop = easeOut((now - S.trayPop[i]) / 260);
@@ -1300,7 +1311,7 @@
     const news = unlockedDirs().filter(d => !S.dirs.includes(d));
     const newsEl = $("shopNews");
     newsEl.hidden = !news.length;
-    if (news.length) newsEl.textContent = "Pieces will also come from " + UNLOCKS.find(u => u.dir === news[0]).side + "!";
+    if (news.length) newsEl.textContent = "Pieces will also come from " + SIDES[news[0]] + "!";
     renderShop();
     show(shopOverlay);
     updateHud();
@@ -1314,7 +1325,7 @@
     const before = S.dirs;
     S.dirs = unlockedDirs();
     const added = S.dirs.find(d => !before.includes(d));
-    if (added !== undefined) S.announce = { text: "Now from " + UNLOCKS.find(u => u.dir === added).side + "!", t0: performance.now() };
+    if (added !== undefined) S.announce = { text: "Now from " + SIDES[added] + "!", t0: performance.now() };
     S.lastStep = performance.now();
     updateHud();
   }
@@ -1362,6 +1373,7 @@
   $("againBtn").addEventListener("click", openMenu);
   $("mode-casual").addEventListener("click", () => chooseMode("casual"));
   $("mode-challenge").addEventListener("click", () => chooseMode("challenge"));
+  $("mode-hard").addEventListener("click", () => chooseMode("hard"));
   document.addEventListener("visibilitychange", () => { if (document.hidden) setPaused(true); });
   document.addEventListener("keydown", e => {
     if (S.shopOpen || S.menu) return;
@@ -1390,12 +1402,12 @@
   const start = data => {
     if (data && data.grid) newGame(data, MODES[data.mode] ? data.mode : "casual");
     else openMenu();
-    // Test hooks: #shop-preview opens the shop with some coins; #challenge-N starts Challenge at level N.
+    // Test hooks: #shop-preview opens the shop with some coins; #hard-N (or #challenge-N) starts that mode at level N.
     if (location.hash === "#shop-preview") { chooseMode(mode); S.coins = 40; S.levelBonus = 5; openShop(); }
-    const lv = location.hash.match(/^#challenge-(\d+)$/);
+    const lv = location.hash.match(/^#(challenge|hard)-(\d+)$/);
     if (lv) {
-      chooseMode("challenge");
-      S.clears = (parseInt(lv[1], 10) - 1) * CLEARS_PER_LEVEL;
+      chooseMode(lv[1]);
+      S.clears = (parseInt(lv[2], 10) - 1) * CLEARS_PER_LEVEL;
       S.levelSeen = level(); S.dirs = unlockedDirs(); zoom = zoomTarget(); geometry(); updateHud();
       window.__blockDrift = { state: () => S, gravity: applyGravity, findClears, openShop };
     }
