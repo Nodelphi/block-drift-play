@@ -210,7 +210,7 @@
   }
   .pill:active { transform: scale(0.96); }
   /* Difficulty picker */
-  .sheet.menu { width: min(420px, 100%); gap: 14px; padding: 30px 20px 24px; background: rgba(45, 49, 102, 0.96); }
+  .sheet.menu { width: min(420px, 100%); max-height: 100%; overflow-y: auto; gap: 14px; padding: 30px 20px 24px; background: rgba(45, 49, 102, 0.96); }
   .modes { display: grid; gap: 10px; width: 100%; }
   .mode {
     display: grid; gap: 4px; text-align: left;
@@ -223,13 +223,36 @@
     cursor: pointer;
     transition: transform 0.15s ease, background 0.15s ease;
   }
-  .mode:active { transform: scale(0.98); }
+  .mode .go { display: grid; gap: 4px; text-align: left; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+  .mode .go:active { transform: scale(0.98); }
+  .mode .go:focus-visible { outline: 2px solid var(--mint); outline-offset: 4px; border-radius: 8px; }
   .mode.last { border-color: rgba(168, 230, 207, 0.6); background: rgba(168, 230, 207, 0.1); }
-  .mode:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
   .mode .mname { font-family: var(--font-display); font-weight: 600; font-size: 1.3rem; }
   .mode .mdesc { color: var(--ink-dim); font-weight: 700; font-size: 0.92rem; line-height: 1.35; }
   .mode .mbest { color: var(--coin); font-weight: 800; font-size: 0.85rem; }
   .shop .news { color: var(--mint); font-weight: 800; font-size: 0.95rem; }
+  .mode .startat { display: flex; align-items: center; gap: 8px; color: var(--ink-dim); font-weight: 800; font-size: 0.85rem; margin-top: 4px; }
+  .mode select {
+    font: 800 0.95rem var(--font-body); color: var(--ink);
+    background: rgba(255, 255, 255, 0.12); border: 1px solid var(--card-line); border-radius: 10px;
+    padding: 5px 8px; cursor: pointer;
+  }
+  .mode select:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+  .mode option { color: #1F2A4D; }
+  /* Game over */
+  .sheet.over { width: min(400px, 100%); max-height: 100%; overflow-y: auto; gap: 10px; padding: 28px 20px 22px; background: rgba(45, 49, 102, 0.96); }
+  .sheet.over .big.newbest { color: var(--coin); text-shadow: 0 0 18px rgba(249, 231, 159, 0.7); }
+  .sheet.over .sub.newbest { color: var(--coin); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; margin-top: 4px; }
+  .stat-tile { display: grid; gap: 2px; padding: 10px 12px; border-radius: 16px; background: var(--card); border: 1px solid var(--card-line); text-align: left; }
+  .stat-tile .k { color: var(--ink-dim); font-weight: 800; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .stat-tile .v { font-family: var(--font-display); font-weight: 600; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+  .over .eyebrow { color: var(--ink-dim); font-weight: 800; font-size: 0.72rem; letter-spacing: 0.14em; margin-top: 6px; }
+  .used { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; }
+  .used > div { display: grid; justify-items: center; gap: 4px; padding: 10px 4px; border-radius: 16px; background: var(--card); border: 1px solid var(--card-line); }
+  .used svg { width: 22px; height: 22px; }
+  .used .v { font-family: var(--font-display); font-weight: 600; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+  .used .k { color: var(--ink-dim); font-weight: 800; font-size: 0.68rem; }
   .text-btn { background: none; border: 0; color: var(--ink-dim); font: 700 1rem var(--font-body); cursor: pointer; padding: 6px 10px; }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .overlay { animation: none; } }
@@ -279,10 +302,13 @@
   </div>
 </div>
 <div class="overlay" id="overOverlay" hidden>
-  <div class="sheet">
-    <h2>Board full</h2>
+  <div class="sheet over" role="dialog" aria-labelledby="overTitle">
+    <h2 id="overTitle">Board full</h2>
     <div class="big" id="finalScore">0</div>
     <div class="sub" id="finalBest">Best 0</div>
+    <div class="stats" id="finalStats"></div>
+    <div class="eyebrow">POWER-UPS USED</div>
+    <div class="used" id="finalUsed"></div>
     <button class="pill" id="againBtn">Play again</button>
   </div>
 </div>
@@ -305,21 +331,30 @@
     <h2 id="menuTitle">Block Drift</h2>
     <div class="sub">Choose a difficulty</div>
     <div class="modes">
-      <button class="mode" id="mode-casual">
-        <span class="mname">Casual</span>
-        <span class="mdesc">Tall 9×15 board. Blocks drift down from above.</span>
-        <span class="mbest" id="best-casual"></span>
-      </button>
-      <button class="mode" id="mode-challenge">
-        <span class="mname">Challenge</span>
-        <span class="mdesc">Compact 9×9 board where columns clear too. Blocks drift down from above.</span>
-        <span class="mbest" id="best-challenge"></span>
-      </button>
-      <button class="mode" id="mode-hard">
-        <span class="mname">Hard</span>
-        <span class="mdesc">Wide 15×15 board where columns clear too. From level 10 blocks also drift in from the right, and from level 20 the left.</span>
-        <span class="mbest" id="best-hard"></span>
-      </button>
+      <div class="mode" id="mode-casual">
+        <button class="go" id="go-casual">
+          <span class="mname">Casual</span>
+          <span class="mdesc">Tall 9×15 board. Blocks drift down from above.</span>
+          <span class="mbest" id="best-casual"></span>
+        </button>
+        <label class="startat" id="startat-casual" hidden>Start at level <select id="start-casual"></select></label>
+      </div>
+      <div class="mode" id="mode-challenge">
+        <button class="go" id="go-challenge">
+          <span class="mname">Challenge</span>
+          <span class="mdesc">Compact 9×9 board where columns clear too. Blocks drift down from above.</span>
+          <span class="mbest" id="best-challenge"></span>
+        </button>
+        <label class="startat" id="startat-challenge" hidden>Start at level <select id="start-challenge"></select></label>
+      </div>
+      <div class="mode" id="mode-hard">
+        <button class="go" id="go-hard">
+          <span class="mname">Hard</span>
+          <span class="mdesc">Wide 15×15 board where columns clear too. From level 10 blocks also drift in from the right, and from level 20 the left.</span>
+          <span class="mbest" id="best-hard"></span>
+        </button>
+        <label class="startat" id="startat-hard" hidden>Start at level <select id="start-hard"></select></label>
+      </div>
     </div>
   </div>
 </div>
@@ -405,6 +440,11 @@
   const saveBest = (m, v) => { try { localStorage.setItem(bestKey(m), String(v)); } catch {} };
   const loadMode = () => { try { const m = localStorage.getItem("blockDriftMode"); return MODES[m] ? m : "casual"; } catch { return "casual"; } };
   const saveMode = m => { try { localStorage.setItem("blockDriftMode", m); } catch {} };
+  const loadNum = k => { try { return parseInt(localStorage.getItem(k) || "0", 10) || 0; } catch { return 0; } };
+  const saveNum = (k, v) => { try { localStorage.setItem(k, String(v)); } catch {} };
+  // The highest level finished in each mode, and the start level last picked for it.
+  const loadBeaten = m => loadNum("blockDriftBeaten-" + m);
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // ---------- state ----------
   let mode = loadMode();
@@ -444,7 +484,7 @@
     S.trayPop = S.tray.map((_, i) => now + i * 60);
   }
 
-  function newGame(restore, newMode) {
+  function newGame(restore, newMode, startLevel = 1) {
     gameId++;
     if (newMode) mode = newMode;
     ROWS = MODES[mode].rows; COLS = MODES[mode].cols;
@@ -459,6 +499,9 @@
       levelSeen: 1, levelBonus: 0, shopPending: false, shopOpen: false,
       aiming: false, aimCell: null, blast: null,
       menu: false, dirs: [0], announce: null,
+      flashes: [], sparks: [],
+      stats: { startLevel: 1, played: 0, rows: 0, cols: 0, squares: 0, bestCombo: 0, bestCascade: 0, bestStreak: 0,
+               placed: 0, coinsEarned: 0, bombs: 0, rerolls: 0, extra: 0, slow: 0 },
     };
     drag = null;
     touch = null;
@@ -474,6 +517,11 @@
     } else {
       freshTray(now);
       seedRubble(MODES[mode].rubble);
+      if (startLevel > 1) {
+        S.clears = (startLevel - 1) * CLEARS_PER_LEVEL;
+        S.levelSeen = level();
+        S.stats.startLevel = startLevel;
+      }
     }
     S.dirs = unlockedDirs();
     zoom = zoomTarget();
@@ -489,17 +537,23 @@
     newGame();
     S.menu = true;
     Object.keys(MODES).forEach(m => {
-      const b = loadBest(m);
-      $("best-" + m).textContent = b ? "Best " + b : "";
+      const b = loadBest(m), beaten = loadBeaten(m);
+      $("best-" + m).textContent = [b ? "Best " + b : "", beaten ? "Beat level " + beaten : ""].filter(Boolean).join("  ·  ");
       $("mode-" + m).classList.toggle("last", m === mode);
+      // Players can restart at any level they've beaten.
+      const sel = $("start-" + m);
+      sel.innerHTML = "";
+      for (let n = 1; n <= Math.max(1, beaten); n++) sel.add(new Option(String(n), String(n)));
+      sel.value = String(Math.min(Math.max(1, loadNum("blockDriftStart-" + m)), Math.max(1, beaten)));
+      $("startat-" + m).hidden = beaten < 2;
     });
     show(menuOverlay);
     updateHud();
-    $("mode-" + mode).focus({ preventScroll: true });
+    $("go-" + mode).focus({ preventScroll: true });
   }
-  function chooseMode(m) {
+  function chooseMode(m, startLevel = 1) {
     saveMode(m);
-    newGame(null, m);
+    newGame(null, m, startLevel);
   }
 
   function seedRubble(n) {
@@ -610,10 +664,29 @@
   }
   function endGame() {
     S.over = true; S.falling = null; drag = null;
+    const newBest = S.score > 0 && S.score > best;
     updateBest();
     finalScore.textContent = S.score;
-    finalBest.textContent = S.score > 0 && S.score >= best ? "New best!" : "Best " + best;
+    finalScore.classList.toggle("newbest", newBest);
+    finalBest.classList.toggle("newbest", newBest);
+    finalBest.textContent = newBest ? "New best score!" : "Best " + best;
+    const st = S.stats, secs = Math.round(st.played / 1000);
+    const tiles = [
+      ["Level reached", level() + (st.startLevel > 1 ? ` (from ${st.startLevel})` : "")],
+      ["Time", Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0")],
+      [MODES[mode].columns ? "Rows / columns" : "Rows cleared", MODES[mode].columns ? st.rows + " / " + st.cols : st.rows],
+      ["Squares", st.squares],
+      ["Biggest combo", st.bestCombo > 1 ? st.bestCombo + " at once" : "–"],
+      ["Best streak", st.bestStreak > 1 ? "×" + st.bestStreak : "–"],
+      ["Shapes placed", st.placed],
+      ["Coins earned", st.coinsEarned],
+    ];
+    $("finalStats").innerHTML = tiles.map(([k, v]) => `<div class="stat-tile"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("");
+    const used = [["bomb", "Bombs", st.bombs], ["reroll", "Rerolls", st.rerolls], ["extra", "Extra shape", st.extra], ["slow", "Slow time", st.slow]];
+    $("finalUsed").innerHTML = used.map(([id, k, v]) => `<div>${ICONS[id]}<span class="v">${v}</span><span class="k">${k}</span></div>`).join("");
+    updateHud();
     show(overOverlay);
+    $("againBtn").focus({ preventScroll: true });
   }
   function updateBest() { if (S.score > best) { best = S.score; saveBest(mode, best); } }
 
@@ -622,6 +695,7 @@
     shape.cells.forEach(([r, c]) => { S.grid[r + r0][c + c0] = newBlock(shape.color, r + r0, c + c0); });
     S.tray[i] = null;
     S.score += shape.cells.length;
+    S.stats.placed++;
     // An expired extra slot goes away once its shape is used.
     if (!S.extraSlot && S.tray.length > 3 && !S.tray[3]) S.tray.length = 3;
     if (S.tray.every(t => !t)) freshTray(performance.now());
@@ -634,7 +708,7 @@
     const f = findClears(S.grid);
     if (!f.count) { if (byPlayer) S.streak = 0; return; }
     // Clearing with your own pieces builds a streak multiplier.
-    if (byPlayer) S.streak++;
+    if (byPlayer) { S.streak++; S.stats.bestStreak = Math.max(S.stats.bestStreak, S.streak); }
     S.resolving = true;
     runClear(f, byPlayer ? Math.max(1, S.streak) : 1, 1, gameId);
   }
@@ -644,6 +718,10 @@
     const points = (f.count * 18 + (f.count - 1) * 18) * mult;
     S.score += points;
     S.clears += f.count;
+    const st = S.stats, coinsBefore = S.coins;
+    st.rows += f.rows.length; st.cols += f.cols.length; st.squares += f.squares.length;
+    st.bestCombo = Math.max(st.bestCombo, f.count);
+    st.bestCascade = Math.max(st.bestCascade, chain);
     // A lone clear earns half a coin; every part of a combo or chain earns a full coin.
     S.coinHalves += (f.count === 1 && chain === 1) ? 1 : 2 * f.count;
     S.coins += Math.floor(S.coinHalves / 2);
@@ -655,7 +733,9 @@
       S.levelBonus += 3 * gained;
       S.coins += 3 * gained;
       S.shopPending = true;
+      if (level() - 1 > loadBeaten(mode)) saveNum("blockDriftBeaten-" + mode, level() - 1);
     }
+    st.coinsEarned += S.coins - coinsBefore;
 
     const parts = [];
     if (f.rows.length) parts.push(f.rows.length === 1 ? "Line" : f.rows.length + " Lines");
@@ -664,8 +744,9 @@
     let title = parts.join(" + ");
     if (chain > 1) title = "Cascade! " + title;
     if (mult > 1) title += "  ·  ×" + mult;
-    S.popup = { title, points, t0: performance.now() };
+    S.popup = { title, points, t0: performance.now(), big: f.count > 1 || chain > 1 };
     S.clearing = clearKeys(f);
+    S.flashes.push({ f, t0: performance.now(), power: Math.min(3, f.count + chain - 1) });
     buzz();
     updateHud();
 
@@ -711,6 +792,7 @@
       S.falling = null;
     }
     S.bombs--;
+    S.stats.bombs++;
     S.aiming = false;
     S.aimCell = null;
     S.blast = { r, c, t0: now };
@@ -750,6 +832,7 @@
       return randomShape(TRAY_F);
     });
     S.rerolls--;
+    S.stats.rerolls++;
     tapHaptic();
     updateHud();
   }
@@ -759,7 +842,15 @@
     clearKeys(f).forEach(k => {
       const r = Math.floor(k / COLS), c = k % COLS;
       const b = S.grid[r][c];
-      if (b) S.fades.push({ r, c, color: b.c, t0: now });
+      if (b) {
+        S.fades.push({ r, c, color: b.c, t0: now });
+        if (!reduceMotion && S.sparks.length < 360)
+          for (let i = 0; i < 3; i++) {
+            const a = Math.random() * Math.PI * 2, sp = 1.5 + Math.random() * 3.5;
+            S.sparks.push({ x: c + 0.5, y: r + 0.5, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 2, t0: now,
+                            life: 550 + Math.random() * 450, color: b.c, size: 0.06 + Math.random() * 0.08 });
+          }
+      }
       S.grid[r][c] = null;
     });
   }
@@ -907,6 +998,8 @@
       block(bx + p.c * s, by + p.r * s, s, COLORS[p.color], { alpha: 1 - t, scale: 1 + t * 0.6, glow: true });
     });
 
+    drawFlashes(now);
+
     // ghost of the dragged shape
     if (target) shapeAt(S.tray[drag.i], bx + target[1] * s, by + target[0] * s, s, { alpha: 0.4 });
 
@@ -945,6 +1038,8 @@
     ctx.restore();
     ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 1;
     rr(bx + 0.5, by + 0.5, bw - 1, bh - 1, 16); ctx.stroke();
+    drawBoardGlow(now);
+    drawSparks(now);
 
     if (zoom > 0) {
       drawEntrySides();
@@ -1021,8 +1116,8 @@
         ctx.globalAlpha = inT * (1 - outT);
         ctx.translate(bx + bw / 2, by + s * 2.4 - outT * s);
         ctx.scale(0.7 + inT * 0.3, 0.7 + inT * 0.3);
-        ctx.textAlign = "center"; ctx.fillStyle = "#F4F1FF";
-        ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 10;
+        ctx.textAlign = "center"; ctx.fillStyle = S.popup.big ? "#FFF3C4" : "#F4F1FF";
+        ctx.shadowColor = S.popup.big ? "rgba(249,231,159,0.85)" : "rgba(168,230,207,0.6)"; ctx.shadowBlur = s * 0.6;
         ctx.font = `600 ${Math.round(s * 0.5)}px Fredoka, Nunito, sans-serif`;
         ctx.fillText(S.popup.title, 0, 0);
         ctx.font = `700 ${Math.round(s * 0.85)}px Fredoka, Nunito, sans-serif`;
@@ -1030,6 +1125,87 @@
         ctx.restore();
       }
     }
+  }
+
+  // ---------- clear effects ----------
+  const FLASH_MS = 900;
+  /** A glow over each cleared row, column or square, a light sweeping across it, then a ring as it pops. */
+  function drawFlashes(now) {
+    const { cell: s, bx, by, bw, bh } = L;
+    S.flashes = S.flashes.filter(fl => now - fl.t0 < FLASH_MS);
+    if (!S.flashes.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    S.flashes.forEach(({ f, t0, power }) => {
+      const age = now - t0, t = age / FLASH_MS;
+      const glow = Math.pow(1 - t, 2) * (0.08 + 0.04 * power);
+      const sweep = easeOut(age / 380);
+      const bands = [
+        ...f.rows.map(r => ({ x: bx, y: by + r * s, w: bw, h: s, horiz: true })),
+        ...f.cols.map(c => ({ x: bx + c * s, y: by, w: s, h: bh, horiz: false })),
+        ...f.squares.map(([r, c]) => ({ x: bx + c * s, y: by + r * s, w: s * SQ, h: s * SQ, sq: true })),
+      ];
+      bands.forEach(b => {
+        // soft glow over the whole band
+        ctx.fillStyle = `rgba(255, 244, 214, ${glow})`;
+        rr(b.x, b.y, b.w, b.h, s * 0.3); ctx.fill();
+        // a bright stripe sweeping along it
+        if (age < 420) {
+          const len = b.horiz ? b.w : b.h, pos = sweep * (len + s * 3) - s * 1.5;
+          const g = b.sq
+            ? ctx.createLinearGradient(b.x - b.w + sweep * b.w * 2, b.y - b.h + sweep * b.h * 2, b.x + sweep * b.w * 2, b.y + sweep * b.h * 2)
+            : b.horiz ? ctx.createLinearGradient(b.x + pos - s * 1.5, 0, b.x + pos + s * 1.5, 0)
+                      : ctx.createLinearGradient(0, b.y + pos - s * 1.5, 0, b.y + pos + s * 1.5);
+          const a = 0.32 * (1 - age / 420);
+          g.addColorStop(0, "rgba(255,255,255,0)");
+          g.addColorStop(0.5, `rgba(255,255,255,${a})`);
+          g.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.fillStyle = g;
+          ctx.fillRect(b.x, b.y, b.w, b.h);
+        }
+        // a ring that grows outward once the blocks pop
+        if (age > 300) {
+          const k = (age - 300) / (FLASH_MS - 300), grow = easeOut(k) * s * 0.45;
+          ctx.strokeStyle = `rgba(168, 230, 207, ${0.7 * (1 - k)})`;
+          ctx.lineWidth = Math.max(1, s * 0.12 * (1 - k));
+          rr(b.x - grow, b.y - grow, b.w + grow * 2, b.h + grow * 2, s * 0.35 + grow); ctx.stroke();
+        }
+      });
+    });
+    ctx.restore();
+  }
+  /** The board's edge glows briefly on each clear, brighter for combos and cascades. */
+  function drawBoardGlow(now) {
+    const fl = S.flashes[S.flashes.length - 1];
+    if (!fl) return;
+    const t = (now - fl.t0) / FLASH_MS;
+    const { cell: s, bx, by, bw, bh } = L;
+    ctx.save();
+    ctx.globalAlpha = Math.pow(1 - t, 1.5) * (0.35 + 0.2 * fl.power);
+    ctx.shadowColor = fl.power > 1 ? "#F9E79F" : "#A8E6CF";
+    ctx.shadowBlur = s * (0.6 + 0.4 * fl.power);
+    ctx.strokeStyle = ctx.shadowColor; ctx.lineWidth = 2;
+    rr(bx + 1, by + 1, bw - 2, bh - 2, 16); ctx.stroke();
+    ctx.restore();
+  }
+  /** Colored sparks thrown from cleared blocks, pulled gently down. */
+  function drawSparks(now) {
+    if (!S.sparks.length) return;
+    const { cell: s, bx, by } = L;
+    S.sparks = S.sparks.filter(p => now - p.t0 < p.life);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    S.sparks.forEach(p => {
+      const t = (now - p.t0) / 1000, k = (now - p.t0) / p.life;
+      const x = bx + (p.x + p.vx * t) * s, y = by + (p.y + p.vy * t + 4 * t * t) * s;
+      const r = p.size * s * (1 - k * 0.5);
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = rgba(COLORS[p.color], 0.35);
+      ctx.beginPath(); ctx.arc(x, y, r * 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = mix(COLORS[p.color], 0.6);
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.restore();
   }
 
   /** Soft arrows in the margin on each side pieces can come from. The current piece's side glows. */
@@ -1082,6 +1258,7 @@
       zoom = zt > zoom ? Math.min(zt, zoom + dt * 1.6) : Math.max(zt, zoom - dt * 1.6);
       geometry();
     }
+    if (!frozen()) S.stats.played += dt * 1000;
     if (!frozen() && !S.resolving && now - S.lastStep >= interval()) {
       S.lastStep = now;
       tick(now);
@@ -1286,10 +1463,10 @@
       owned: () => S.bombs, buy: () => { S.bombs++; } },
     { id: "extra", name: "Extra Shape", price: 12, max: 1,
       desc: "A 4th shape in your tray for this level.",
-      owned: () => (S.extraSlot ? 1 : 0), buy: () => { S.extraSlot = true; addExtraSlot(); } },
+      owned: () => (S.extraSlot ? 1 : 0), buy: () => { S.extraSlot = true; S.stats.extra++; addExtraSlot(); } },
     { id: "slow", name: "Slow Time", price: 10, max: 1,
       desc: "Pieces fall 40% slower for this level.",
-      owned: () => (S.slowTime ? 1 : 0), buy: () => { S.slowTime = true; } },
+      owned: () => (S.slowTime ? 1 : 0), buy: () => { S.slowTime = true; S.stats.slow++; } },
     { id: "reroll", name: "Reroll", price: 4, max: 5,
       desc: "Swap your tray for new shapes. Hold up to 5.",
       owned: () => S.rerolls, buy: () => { S.rerolls++; } },
@@ -1377,9 +1554,11 @@
   $("resumeBtn").addEventListener("click", () => setPaused(false));
   $("restartBtn").addEventListener("click", openMenu);
   $("againBtn").addEventListener("click", openMenu);
-  $("mode-casual").addEventListener("click", () => chooseMode("casual"));
-  $("mode-challenge").addEventListener("click", () => chooseMode("challenge"));
-  $("mode-hard").addEventListener("click", () => chooseMode("hard"));
+  Object.keys(MODES).forEach(m => {
+    const sel = $("start-" + m);
+    sel.addEventListener("change", () => saveNum("blockDriftStart-" + m, parseInt(sel.value, 10)));
+    $("go-" + m).addEventListener("click", () => chooseMode(m, $("startat-" + m).hidden ? 1 : parseInt(sel.value, 10) || 1));
+  });
   document.addEventListener("visibilitychange", () => { if (document.hidden) setPaused(true); });
   document.addEventListener("keydown", e => {
     if (S.shopOpen || S.menu) return;
@@ -1412,10 +1591,10 @@
     if (location.hash === "#shop-preview") { chooseMode(mode); S.coins = 40; S.levelBonus = 5; openShop(); }
     const lv = location.hash.match(/^#(challenge|hard)-(\d+)$/);
     if (lv) {
-      chooseMode(lv[1]);
-      S.clears = (parseInt(lv[2], 10) - 1) * CLEARS_PER_LEVEL;
-      S.levelSeen = level(); S.dirs = unlockedDirs(); zoom = zoomTarget(); geometry(); updateHud();
-      window.__blockDrift = { state: () => S, gravity: applyGravity, findClears, openShop };
+      chooseMode(lv[1], parseInt(lv[2], 10));
+    }
+    if (lv || location.hash === "#test") {
+      window.__blockDrift = { state: () => S, gravity: applyGravity, findClears, openShop, resolve, endGame, openMenu };
     }
     requestAnimationFrame(frame);
   };
