@@ -253,6 +253,8 @@
   .used svg { width: 22px; height: 22px; }
   .used .v { font-family: var(--font-display); font-weight: 600; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
   .used .k { color: var(--ink-dim); font-weight: 800; font-size: 0.68rem; }
+  .banked { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--coin); font-weight: 800; font-size: 0.95rem; margin-top: 4px; }
+  .banked svg { width: 18px; height: 18px; flex: none; }
   .text-btn { background: none; border: 0; color: var(--ink-dim); font: 700 1rem var(--font-body); cursor: pointer; padding: 6px 10px; }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .overlay { animation: none; } }
@@ -309,6 +311,7 @@
     <div class="stats" id="finalStats"></div>
     <div class="eyebrow">POWER-UPS USED</div>
     <div class="used" id="finalUsed"></div>
+    <div class="banked" id="finalBank"></div>
     <button class="pill" id="againBtn">Play again</button>
   </div>
 </div>
@@ -330,6 +333,7 @@
   <div class="sheet menu" role="dialog" aria-labelledby="menuTitle">
     <h2 id="menuTitle">Block Drift</h2>
     <div class="sub">Choose a difficulty</div>
+    <div class="banked" id="menuBank" hidden></div>
     <div class="modes">
       <div class="mode" id="mode-casual">
         <button class="go" id="go-casual">
@@ -444,6 +448,9 @@
   const saveNum = (k, v) => { try { localStorage.setItem(k, String(v)); } catch {} };
   // The highest level finished in each mode, and the start level last picked for it.
   const loadBeaten = m => loadNum("blockDriftBeaten-" + m);
+  // Coins carry over between runs, shared by every mode. The bank always holds the live run's wallet.
+  const BANK_KEY = "blockDriftBank";
+  const COIN_SVG = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#F9E79F"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="#E2C25F" stroke-width="2"/></svg>';
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // ---------- state ----------
@@ -499,6 +506,7 @@
       levelSeen: 1, levelBonus: 0, shopPending: false, shopOpen: false,
       aiming: false, aimCell: null, blast: null,
       menu: false, dirs: [0], announce: null,
+      live: false,   // a real run (not the board behind the menu), whose coins are banked
       flashes: [], sparks: [],
       stats: { startLevel: 1, played: 0, rows: 0, cols: 0, squares: 0, bestCombo: 0, bestCascade: 0, bestStreak: 0,
                placed: 0, coinsEarned: 0, bombs: 0, rerolls: 0, extra: 0, slow: 0 },
@@ -514,6 +522,7 @@
       S.coins = restore.coins || 0; S.coinHalves = restore.coinHalves || 0; S.bombs = restore.bombs || 0; S.rerolls = restore.rerolls || 0;
       S.extraSlot = !!restore.extraSlot; S.slowTime = !!restore.slowTime;
       S.levelSeen = level();
+      S.live = true;
     } else {
       freshTray(now);
       seedRubble(MODES[mode].rubble);
@@ -547,13 +556,21 @@
       sel.value = String(Math.min(Math.max(1, loadNum("blockDriftStart-" + m)), Math.max(1, beaten)));
       $("startat-" + m).hidden = beaten < 2;
     });
+    const bank = loadNum(BANK_KEY);
+    $("menuBank").hidden = !bank;
+    $("menuBank").innerHTML = `${COIN_SVG}<span>${bank} coins banked</span>`;
     show(menuOverlay);
     updateHud();
     $("go-" + mode).focus({ preventScroll: true });
   }
-  function chooseMode(m, startLevel = 1) {
+  function chooseMode(m, startLevel = 1, shopFirst = true) {
     saveMode(m);
     newGame(null, m, startLevel);
+    // Banked coins come along. If they can buy something, the shop opens before the first piece.
+    S.live = true;
+    S.coins = loadNum(BANK_KEY);
+    updateHud();
+    if (shopFirst && S.coins >= Math.min(...SHOP.map(i => i.price))) openShop(true);
   }
 
   function seedRubble(n) {
@@ -683,6 +700,7 @@
     ];
     $("finalStats").innerHTML = tiles.map(([k, v]) => `<div class="stat-tile"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("");
     const used = [["bomb", "Bombs", st.bombs], ["reroll", "Rerolls", st.rerolls], ["extra", "Extra shape", st.extra], ["slow", "Slow time", st.slow]];
+    $("finalBank").innerHTML = S.coins ? `${COIN_SVG}<span>${S.coins} coins saved for your next run</span>` : "";
     $("finalUsed").innerHTML = used.map(([id, k, v]) => `<div>${ICONS[id]}<span class="v">${v}</span><span class="k">${k}</span></div>`).join("");
     updateHud();
     show(overOverlay);
@@ -1432,6 +1450,7 @@
     levelEl.textContent = level();
     bestEl.textContent = Math.max(best, S.score);
     coinsEl.textContent = S.coins;
+    if (S.live) saveNum(BANK_KEY, S.coins);
     $("bombCount").textContent = S.bombs;
     $("rerollCount").textContent = S.rerolls;
     const busy = S.over || S.paused || S.shopOpen || S.menu;
@@ -1479,7 +1498,7 @@
     }
   }
 
-  function openShop() {
+  function openShop(starting = false) {
     S.shopPending = false;
     S.shopOpen = true;
     if (S.aiming) setAiming(false);
@@ -1489,7 +1508,7 @@
     S.slowTime = false;
     if (S.tray.length > 3 && !S.tray[3]) S.tray.length = 3;
     $("shopTitle").textContent = "Level " + level();
-    $("shopBonus").textContent = S.levelBonus ? `+${S.levelBonus} level bonus` : "";
+    $("shopBonus").textContent = starting ? "Coins banked from earlier runs" : S.levelBonus ? `+${S.levelBonus} level bonus` : "";
     S.levelBonus = 0;
     const news = unlockedDirs().filter(d => !S.dirs.includes(d));
     const newsEl = $("shopNews");
@@ -1588,10 +1607,10 @@
     if (data && data.grid) newGame(data, MODES[data.mode] ? data.mode : "casual");
     else openMenu();
     // Test hooks: #shop-preview opens the shop with some coins; #hard-N (or #challenge-N) starts that mode at level N.
-    if (location.hash === "#shop-preview") { chooseMode(mode); S.coins = 40; S.levelBonus = 5; openShop(); }
+    if (location.hash === "#shop-preview") { chooseMode(mode, 1, false); S.coins = 40; S.levelBonus = 5; openShop(); }
     const lv = location.hash.match(/^#(challenge|hard)-(\d+)$/);
     if (lv) {
-      chooseMode(lv[1], parseInt(lv[2], 10));
+      chooseMode(lv[1], parseInt(lv[2], 10), false);
     }
     if (lv || location.hash === "#test") {
       window.__blockDrift = { state: () => S, gravity: applyGravity, findClears, openShop, resolve, endGame, openMenu };
